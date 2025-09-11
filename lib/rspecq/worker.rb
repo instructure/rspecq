@@ -78,7 +78,7 @@ module RSpecQ
     # Defaults to 30
     attr_accessor :chunk_target_duration
 
-    attr_reader :queue
+    attr_reader :queue, :build_id, :worker_id
 
     def initialize(build_id:, worker_id:, redis_opts:, worker_liveness_sec:)
       @build_id = build_id
