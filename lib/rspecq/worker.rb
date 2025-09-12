@@ -114,7 +114,8 @@ module RSpecQ
       recovered = queue.recover_own_job
       puts "Recovered abandoned job from previous crash: #{recovered}" if recovered
 
-      try_publish_queue!(queue)
+      q_size = try_publish_queue!(queue)
+      puts "Published queue (size=#{q_size})" if q_size
       queue.wait_until_published(queue_wait_timeout)
       queue.save_worker_seed(@worker_id, seed)
 
@@ -219,7 +220,7 @@ module RSpecQ
           "Reproduction mode. Published queue as given (size=#{q_size})",
           "info"
         )
-        return
+        return q_size
       end
 
       puts "I am the master worker (worker_id=#{@worker_id}), publishing the queue..."
@@ -233,7 +234,7 @@ module RSpecQ
           "No timings found! Published queue in random order (size=#{q_size})",
           "warning"
         )
-        return
+        return q_size
       end
 
       # prepare jobs to run
@@ -257,7 +258,7 @@ module RSpecQ
 
       jobs = order_jobs_by_timings(jobs)
 
-      puts "Published queue (size=#{queue.publish(jobs, fail_fast)})"
+      queue.publish(jobs, fail_fast)
     end
 
     private
