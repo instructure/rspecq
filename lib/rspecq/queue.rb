@@ -107,7 +107,9 @@ module RSpecQ
         pipeline.rpush(key_queue_unprocessed, jobs)
         pipeline.setnx(key_queue_ready_at, time)
         pipeline.set(key_queue_status, STATUS_READY)
-      end.first
+      end
+
+      jobs.size
     end
 
     # Records when a master worker was elected (start of the whole build).
