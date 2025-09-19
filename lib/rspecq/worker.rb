@@ -135,7 +135,11 @@ module RSpecQ
         # build is finished
         return if job.nil? && queue.exhausted?
 
-        next if job.nil?
+        if job.nil?
+          # backoff if no job is available
+          sleep 1
+          next
+        end
 
         puts
         puts "Executing #{job}"
