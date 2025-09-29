@@ -173,4 +173,16 @@ class TestEndToEnd < RSpecQTest
     assert File.exist?("test/sample_suites/flakey_suite/test/test_results/test.1.xml")
     assert File.exist?("test/sample_suites/flakey_suite/test/test_results/test.2.xml")
   end
+
+  def test_seed_reproducability
+    initial_outcome = nil
+
+    3.times do |i|
+      queue = exec_build("random_failing", " --max-requeues 0 --seed 1234", build_id: "run-#{i}")
+      outcome = queue.build_successful?
+      initial_outcome ||= outcome
+
+      assert_equal outcome, initial_outcome, "the outcome should be the same for the same seed"
+    end
+  end
 end

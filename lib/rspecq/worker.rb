@@ -117,6 +117,14 @@ module RSpecQ
       try_publish_queue!(queue)
       queue.wait_until_published(queue_wait_timeout)
       queue.save_worker_seed(@worker_id, seed)
+
+      # Use `--seed` to deterministically reproduce test failures
+      # related to randomization by passing the same `--seed` value
+      # as the one that triggered the failure.
+      #
+      # We also use the same seed to feed Rspec's `--seed` option.
+      Kernel.srand(seed)
+
       idx = 0
       loop do
         # we have to bootstrap this so that it can be used in the first call
