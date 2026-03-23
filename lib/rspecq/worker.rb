@@ -265,7 +265,7 @@ module RSpecQ
       # are loaded once via `require` and won't be re-defined.
       RSpec.world.shared_example_group_registry
            .send(:shared_example_groups)
-           .reject! { |k, _| k == :main }
+           .reject! { |k, _| k != :main }
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual
