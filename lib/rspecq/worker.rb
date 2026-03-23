@@ -248,6 +248,24 @@ module RSpecQ
       # we don't want an error that occured outside of the examples (which
       # would set this to `true`) to stop the worker
       RSpec.world.wants_to_quit = false
+
+      # RSpec.clear_examples calls world.reset which clears world.example_groups,
+      # but NOT world.filtered_examples. That hash is keyed by example group
+      # class objects, so old group classes from the previous job remain
+      # referenced as hash keys and cannot be GC'd.
+      RSpec.world.filtered_examples.clear
+
+      # The shared example group registry is also never cleared by world.reset.
+      # When a spec file defines shared_examples/shared_context inside a
+      # describe block, the example group CLASS becomes a key in the registry's
+      # internal hash. Each `load` of a spec file creates new group classes
+      # that get pinned as hash keys, preventing GC of the entire class tree
+      # (including onceler Marshal blobs). We clear per-group entries but
+      # preserve top-level (:main) shared examples from support files, which
+      # are loaded once via `require` and won't be re-defined.
+      RSpec.world.shared_example_group_registry
+           .send(:shared_example_groups)
+           .reject! { |k, _| k == :main }
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual
