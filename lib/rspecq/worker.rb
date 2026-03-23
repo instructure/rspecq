@@ -248,6 +248,16 @@ module RSpecQ
       # we don't want an error that occured outside of the examples (which
       # would set this to `true`) to stop the worker
       RSpec.world.wants_to_quit = false
+
+      # RSpec.clear_examples calls world.reset which clears world.example_groups,
+      # but NOT world.filtered_examples. That hash is keyed by example group
+      # class objects, so old group classes from the previous job remain
+      # referenced as hash keys and cannot be GC'd. For large spec files like
+      # assignment_spec.rb (602 example groups), this causes ~15 MB of live
+      # object retention per work item — including onceler Marshal blobs stored
+      # on the group classes — ratcheting RSS by hundreds of MB per minute and
+      # eventually OOM-killing the worker node.
+      RSpec.world.filtered_examples.clear
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual
