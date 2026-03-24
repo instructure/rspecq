@@ -270,6 +270,17 @@ module RSpecQ
       RSpec.world.shared_example_group_registry
            .send(:shared_example_groups)
            .reject! { |k, _| k != :main }
+
+      # Invalidate Ruby's inline method caches for the ExampleGroup hierarchy.
+      # When methods defined via define_method on old example group classes
+      # (e.g. assert_* from rspec-rails, let/subject from memoized_helpers)
+      # are called from long-lived ISEQs (helper modules loaded via require),
+      # the call cache IMEMOs in those ISEQs retain references to the old
+      # classes' method entries, preventing GC. Defining and removing a method
+      # on ExampleGroup invalidates all caches in the hierarchy, allowing the
+      # stale IMEMOs to be collected on the next GC.
+      RSpec::Core::ExampleGroup.define_method(:__rspecq_cache_buster__) {}
+      RSpec::Core::ExampleGroup.remove_method(:__rspecq_cache_buster__)
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual
