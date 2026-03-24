@@ -131,7 +131,11 @@ module RSpecQ
           ENV["ERROR_CONTEXT_BASE_PATH"] = "/usr/src/app/log/spec_failures/Rerun_#{queue.is_requeue(job)}"
         end
 
+        eg_before = RSpec::Core::ExampleGroup.subclasses.count
         reset_rspec_state!
+        GC.start(full_mark: true, immediate_sweep: true)
+        eg_after = RSpec::Core::ExampleGroup.subclasses.count
+        puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after})" if idx > 0
 
         # reconfigure rspec
         RSpec.configuration.detail_color = :magenta
