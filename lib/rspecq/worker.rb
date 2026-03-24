@@ -133,9 +133,20 @@ module RSpecQ
 
         eg_before = RSpec::Core::ExampleGroup.subclasses.count
         reset_rspec_state!
+
+        # Work around a Ruby GC bug where Gem::Specification objects in
+        # Gem.loaded_specs prevent collection of anonymous Class objects.
+        # See docs/ruby-gc-bug-gem-loaded-specs.md for details.
+        # Clear loaded_specs so GC can collect old example group classes,
+        # then restore before the next Runner.run (which needs require to work).
+        saved_loaded_specs = Gem.loaded_specs.dup
+        Gem.loaded_specs.clear
         GC.start(full_mark: true, immediate_sweep: true)
+
         eg_after = RSpec::Core::ExampleGroup.subclasses.count
         puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after})" if idx > 0
+
+        Gem.loaded_specs.replace(saved_loaded_specs)
 
         # reconfigure rspec
         RSpec.configuration.detail_color = :magenta
@@ -271,16 +282,6 @@ module RSpecQ
            .send(:shared_example_groups)
            .reject! { |k, _| k != :main }
 
-      # Invalidate Ruby's inline method caches for the ExampleGroup hierarchy.
-      # When methods defined via define_method on old example group classes
-      # (e.g. assert_* from rspec-rails, let/subject from memoized_helpers)
-      # are called from long-lived ISEQs (helper modules loaded via require),
-      # the call cache IMEMOs in those ISEQs retain references to the old
-      # classes' method entries, preventing GC. Defining and removing a method
-      # on ExampleGroup invalidates all caches in the hierarchy, allowing the
-      # stale IMEMOs to be collected on the next GC.
-      RSpec::Core::ExampleGroup.define_method(:__rspecq_cache_buster__) {}
-      RSpec::Core::ExampleGroup.remove_method(:__rspecq_cache_buster__)
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual
