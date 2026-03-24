@@ -3,6 +3,25 @@ require "pathname"
 require "pp"
 require "open3"
 
+# Wrap spec file loading in an anonymous module via Kernel.load(file, true).
+# When rspecq processes split-file jobs, Kernel.load is called for the same
+# spec file on every work item, creating new example group classes each time.
+# Without wrapping, the Ruby VM's ISEQs and IMEMO objects (method entries,
+# call caches) from each load retain references to the created classes,
+# preventing GC even after RSpec's registries are cleared. The anonymous
+# module wrapper scopes these VM-internal structures so they become
+# collectible when the module is GC'd.
+module RSpecQ
+  module WrappedSpecFileLoad
+    private
+
+    def load(file, *)
+      super(file, true)
+    end
+  end
+end
+RSpec::Core::Configuration.prepend(RSpecQ::WrappedSpecFileLoad)
+
 module RSpecQ
   # A Worker, given a build ID, continuously consumes tests off the
   # corresponding and executes them, until the queue is empty.
