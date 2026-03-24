@@ -137,16 +137,15 @@ module RSpecQ
         # Work around a Ruby GC bug where Gem::Specification objects in
         # Gem.loaded_specs prevent collection of anonymous Class objects.
         # See docs/ruby-gc-bug-gem-loaded-specs.md for details.
-        # Clear loaded_specs so GC can collect old example group classes,
-        # then restore before the next Runner.run (which needs require to work).
-        saved_loaded_specs = Gem.loaded_specs.dup
-        Gem.loaded_specs.clear
+        # Bundler sets Gem.discover_gems_on_require = false, which means
+        # the patched Kernel#require never consults loaded_specs. All gem
+        # paths are already on $LOAD_PATH. So we can safely clear it
+        # permanently, allowing GC to collect old example group classes.
+        Gem.loaded_specs.clear if Gem.respond_to?(:discover_gems_on_require) && !Gem.discover_gems_on_require
         GC.start(full_mark: true, immediate_sweep: true)
 
         eg_after = RSpec::Core::ExampleGroup.subclasses.count
         puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after})" if idx > 0
-
-        Gem.loaded_specs.replace(saved_loaded_specs)
 
         # reconfigure rspec
         RSpec.configuration.detail_color = :magenta
