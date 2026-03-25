@@ -131,25 +131,23 @@ module RSpecQ
           ENV["ERROR_CONTEXT_BASE_PATH"] = "/usr/src/app/log/spec_failures/Rerun_#{queue.is_requeue(job)}"
         end
 
-        eg_before = RSpec::Core::ExampleGroup.subclasses.count
         reset_rspec_state!
-
-        # Revert Zeitwerk's Kernel#require wrapper after the first work item.
-        # Zeitwerk intercepts every require call to detect autoloaded constants.
-        # Something in this interception (likely the closure or the Registry
-        # lookup) prevents Ruby's GC from collecting anonymous Class objects
-        # created by Kernel.load. Since all autoloading is complete after the
-        # first spec file loads (Rails and spec_helper are fully initialized),
-        # we can safely revert to the pre-Zeitwerk require for subsequent items.
-        # See docs/ruby-gc-bug-gem-loaded-specs.md for the full investigation.
-        if idx == 1 && Kernel.respond_to?(:zeitwerk_original_require, true)
-          Kernel.send(:define_method, :require, Kernel.instance_method(:zeitwerk_original_require))
-          Kernel.send(:private, :require)
-        end
         GC.start(full_mark: true, immediate_sweep: true)
 
-        eg_after = RSpec::Core::ExampleGroup.subclasses.count
-        puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after})" if idx > 0
+        # Ruby's GC cannot collect anonymous Class objects in large Rails
+        # processes (interaction between Zeitwerk's require wrapper, complex
+        # Gem::Specification objects, and heap size). Since we can't fix the
+        # GC, we limit memory growth by exiting the worker when RSS exceeds
+        # a threshold. The rspecq liveness detection will requeue the current
+        # job, and the worker can be restarted with a fresh heap.
+        # See docs/ruby-gc-bug-gem-loaded-specs.md for the investigation.
+        if idx > 0 && File.readable?("/proc/self/status")
+          rss_mb = File.read("/proc/self/status").match(/VmRSS:\s+(\d+)/)[1].to_i / 1024
+          if rss_mb > 2500
+            puts "  [rspecq] RSS=#{rss_mb}MB exceeds 2500MB threshold after #{idx} jobs, exiting to free memory"
+            return
+          end
+        end
 
         # reconfigure rspec
         RSpec.configuration.detail_color = :magenta
