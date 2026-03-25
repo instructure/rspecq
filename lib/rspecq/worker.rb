@@ -145,7 +145,7 @@ module RSpecQ
           rss_mb = File.read("/proc/self/status").match(/VmRSS:\s+(\d+)/)[1].to_i / 1024
           if rss_mb > 2500
             puts "  [rspecq] RSS=#{rss_mb}MB exceeds 2500MB threshold after #{idx} jobs, exiting to free memory"
-            return
+            exit 75  # EX_TEMPFAIL — signals the wrapper script to restart
           end
         end
 
