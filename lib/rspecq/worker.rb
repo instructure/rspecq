@@ -139,9 +139,12 @@ module RSpecQ
         # See docs/ruby-gc-bug-gem-loaded-specs.md for details.
         # Bundler sets Gem.discover_gems_on_require = false, which means
         # the patched Kernel#require never consults loaded_specs. All gem
-        # paths are already on $LOAD_PATH. So we can safely clear it
-        # permanently, allowing GC to collect old example group classes.
-        Gem.loaded_specs.clear if Gem.respond_to?(:discover_gems_on_require) && !Gem.discover_gems_on_require
+        # paths are already on $LOAD_PATH. We clear loaded_specs starting
+        # from the second work item (idx > 0) — the first item needs it
+        # for Rails/spec_helper initialization, but subsequent items don't.
+        if idx > 0 && Gem.respond_to?(:discover_gems_on_require) && !Gem.discover_gems_on_require
+          Gem.loaded_specs.clear
+        end
         GC.start(full_mark: true, immediate_sweep: true)
 
         eg_after = RSpec::Core::ExampleGroup.subclasses.count
