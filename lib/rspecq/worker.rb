@@ -132,7 +132,6 @@ module RSpecQ
         end
 
         reset_rspec_state!
-        GC.start(full_mark: true, immediate_sweep: true)
 
         # Ruby's GC cannot collect anonymous Class objects in large Rails
         # processes (interaction between Zeitwerk's require wrapper, complex
@@ -140,7 +139,6 @@ module RSpecQ
         # GC, we limit memory growth by exiting the worker when RSS exceeds
         # a threshold. The rspecq liveness detection will requeue the current
         # job, and the worker can be restarted with a fresh heap.
-        # See docs/ruby-gc-bug-gem-loaded-specs.md for the investigation.
         if idx > 0 && File.readable?("/proc/self/status")
           rss_mb = File.read("/proc/self/status").match(/VmRSS:\s+(\d+)/)[1].to_i / 1024
           if rss_mb > 2500
