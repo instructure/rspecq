@@ -71,6 +71,13 @@ module RSpecQ
     # Defaults to nil
     attr_accessor :rspec_args
 
+    # Target duration in seconds for time-balanced example chunks.
+    # When splitting slow files, examples are grouped into chunks of
+    # approximately this duration to reduce Kernel.load calls.
+    #
+    # Defaults to 30
+    attr_accessor :chunk_target_duration
+
     attr_reader :queue
 
     def initialize(build_id:, worker_id:, redis_opts:, worker_liveness_sec:)
@@ -89,6 +96,7 @@ module RSpecQ
       @seed = srand && (srand % 0xFFFF)
       @reproduction = false
       @junit_output = nil
+      @chunk_target_duration = 30
 
       RSpec::Core::Formatters.register(Formatters::JobTimingRecorder, :dump_summary)
       RSpec::Core::Formatters.register(Formatters::ExampleCountRecorder, :dump_summary)
@@ -165,7 +173,7 @@ module RSpecQ
           RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
         end
 
-        args = [*rspec_args, "--format", "progress", job]
+        args = [*rspec_args, "--format", "progress", *job.split("+")]
         opts = RSpec::Core::ConfigurationOptions.new(args)
 
         _result = RSpec::Core::Runner.new(opts).run($stderr, $stdout)
@@ -220,7 +228,9 @@ module RSpecQ
 
       if slow_files.any?
         jobs.concat(files_to_run - slow_files)
-        jobs.concat(files_to_example_ids(slow_files))
+        example_ids = files_to_example_ids(slow_files)
+        chunks = build_time_balanced_chunks(example_ids, timings, chunk_target_duration)
+        jobs.concat(chunks)
       else
         jobs.concat(files_to_run)
       end
@@ -229,11 +239,17 @@ module RSpecQ
 
       # assign timings (based on previous runs) to all jobs
       jobs = jobs.each_with_object({}) do |j, h|
-        puts "Untimed job: #{j}" if timings[j].nil?
+        if j.include?("+")
+          # Chunk job: sum per-example timings (or estimate from default)
+          parts = j.split("+")
+          h[j] = parts.sum { |p| timings[p] || default_timing }
+        else
+          puts "Untimed job: #{j}" if timings[j].nil?
 
-        # HEURISTIC: put jobs without previous timings (e.g. a newly added
-        # spec file) in the middle of the queue
-        h[j] = timings[j] || default_timing
+          # HEURISTIC: put jobs without previous timings (e.g. a newly added
+          # spec file) in the middle of the queue
+          h[j] = timings[j] || default_timing
+        end
       end
 
       # sort jobs based on their timings (slowest to be processed first)
@@ -243,6 +259,42 @@ module RSpecQ
     end
 
     private
+
+    # Groups example IDs into time-balanced chunks, one chunk per Kernel.load.
+    # Examples from different files are never mixed. Uses per-example timings
+    # from Redis when available; falls back to file_timing / example_count.
+    #
+    # Returns an array of job strings: single examples are bare IDs, multi-example
+    # chunks are "+"-delimited (e.g. "spec/foo.rb[1:1]+spec/foo.rb[1:2]").
+    def build_time_balanced_chunks(example_ids, timings, target_duration)
+      by_file = example_ids.group_by { |id| id.sub(/\[.*\]$/, "") }
+      chunks = []
+
+      by_file.each do |file, ids|
+        file_timing = timings[file]
+        default_example_timing = file_timing ? file_timing / ids.size : target_duration / 10.0
+
+        timed_ids = ids.map { |id| [id, timings[id] || default_example_timing] }
+        timed_ids.sort_by! { |_, t| -t }
+
+        current_chunk = []
+        current_duration = 0.0
+
+        timed_ids.each do |id, duration|
+          if current_chunk.empty? || current_duration + duration <= target_duration
+            current_chunk << id
+            current_duration += duration
+          else
+            chunks << current_chunk.join("+")
+            current_chunk = [id]
+            current_duration = duration
+          end
+        end
+        chunks << current_chunk.join("+") unless current_chunk.empty?
+      end
+
+      chunks
+    end
 
     def reset_rspec_state!
       RSpec.clear_examples
@@ -280,7 +332,6 @@ module RSpecQ
       RSpec.world.shared_example_group_registry
            .send(:shared_example_groups)
            .reject! { |k, _| k != :main }
-
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual

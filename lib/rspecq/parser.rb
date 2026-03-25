@@ -95,6 +95,13 @@ module RSpecQ
           opts[:file_split_threshold] = v
         end
 
+        o.on("--chunk-target-duration N", Integer, "Target duration in seconds for " \
+                                                   "time-balanced example chunks when splitting slow files " \
+                                                   "(default: 30). Groups examples into chunks of approximately " \
+                                                   "this duration to reduce Kernel.load overhead.") do |v|
+          opts[:chunk_target_duration] = v
+        end
+
         o.on("--report", "Enable reporter mode: do not pull tests off the queue; " \
                          "instead print build progress and exit when it's " \
                          "finished.\n#{o.summary_indent * 9} " \
@@ -182,6 +189,7 @@ module RSpecQ
       opts[:include_pattern] ||= ENV["INCLUDE_PATTERN"]
       opts[:exclude_pattern] ||= ENV["EXCLUDE_PATTERN"]
       opts[:worker_liveness_sec] ||= Integer(ENV["RSPECQ_WORKER_LIVENESS_SEC"] || DEFAULT_WORKER_LIVENESS_SEC)
+      opts[:chunk_target_duration] ||= Integer(ENV["RSPECQ_CHUNK_TARGET_DURATION"] || 30)
     end
 
     def env_set?(var)
