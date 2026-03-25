@@ -116,6 +116,20 @@ module RSpecQ
       )
     end
 
+    # If this worker has a job in the running hash (from a previous crash),
+    # put it back on the queue. This must be called before update_heartbeat
+    # or reserve_job when a worker restarts with the same worker_id.
+    def recover_own_job
+      job = @redis.hget(key_queue_running, @worker_id)
+      return nil unless job
+
+      @redis.multi do |pipeline|
+        pipeline.lpush(key_queue_unprocessed, job)
+        pipeline.hdel(key_queue_running, @worker_id)
+      end
+      job
+    end
+
     def requeue_lost_job
       @redis.eval(
         REQUEUE_LOST_JOB,

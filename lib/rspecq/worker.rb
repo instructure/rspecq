@@ -108,6 +108,12 @@ module RSpecQ
     def work
       puts "Working for build #{@build_id} (worker=#{@worker_id})"
 
+      # If this worker crashed previously (OOM kill, etc.), it may have a job
+      # stuck in the running hash. Recover it before doing anything else —
+      # otherwise reserve_job will silently overwrite it.
+      recovered = queue.recover_own_job
+      puts "Recovered abandoned job from previous crash: #{recovered}" if recovered
+
       try_publish_queue!(queue)
       queue.wait_until_published(queue_wait_timeout)
       queue.save_worker_seed(@worker_id, seed)

@@ -109,7 +109,8 @@ class TestEndToEnd < RSpecQTest
     assert queue.build_successful?
     refute_empty queue.timings
 
-    queue = exec_build("spec_file_splitting", "--file-split-threshold 1")
+    # chunk-target-duration=0 disables chunking so each example stays its own job
+    queue = exec_build("spec_file_splitting", "--file-split-threshold 1 --chunk-target-duration 0")
 
     assert queue.build_successful?
     refute_empty queue.timings
@@ -118,6 +119,27 @@ class TestEndToEnd < RSpecQTest
       "./spec/slow_spec.rb[1:1]",
       "./spec/fast_spec.rb",
     ], queue)
+  end
+
+  def test_spec_file_splitting_with_chunks
+    queue = exec_build("spec_file_splitting", "--update-timings")
+    assert queue.build_successful?
+    refute_empty queue.timings
+
+    # chunk-target-duration=2 groups both slow_spec.rb examples (~1.2s total) into one chunk
+    queue = exec_build("spec_file_splitting", "--file-split-threshold 1 --chunk-target-duration 2")
+
+    assert queue.build_successful?
+
+    processed = queue.processed_jobs
+    assert_equal 2, processed.size, "Expected 2 jobs: 1 chunk + fast_spec.rb"
+    assert processed.any? { |j| j == "./spec/fast_spec.rb" }
+
+    chunk_job = processed.find { |j| j.include?("+") }
+    refute_nil chunk_job, "Expected a chunk job with '+' delimiter"
+    parts = chunk_job.split("+")
+    assert_equal 2, parts.size
+    assert parts.all? { |p| p.start_with?("./spec/slow_spec.rb[") }
   end
 
   def test_suite_with_failures_and_fail_fast
