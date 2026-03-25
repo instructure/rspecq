@@ -134,24 +134,22 @@ module RSpecQ
         eg_before = RSpec::Core::ExampleGroup.subclasses.count
         reset_rspec_state!
 
-        # Work around a Ruby GC bug where Gem::Specification objects in
-        # Gem.loaded_specs prevent collection of anonymous Class objects.
-        # See docs/ruby-gc-bug-gem-loaded-specs.md for details.
-        # Bundler sets Gem.discover_gems_on_require = false, which means
-        # the patched Kernel#require never consults loaded_specs. All gem
-        # paths are already on $LOAD_PATH. We clear loaded_specs starting
-        # from the second work item (idx > 0) — the first item needs it
-        # for Rails/spec_helper initialization, but subsequent items don't.
-        specs_before = Gem.loaded_specs.size
-        dgr = Gem.respond_to?(:discover_gems_on_require) ? Gem.discover_gems_on_require : "n/a"
-        if idx > 0 && dgr == false
-          Gem.loaded_specs.clear
+        # Revert Zeitwerk's Kernel#require wrapper after the first work item.
+        # Zeitwerk intercepts every require call to detect autoloaded constants.
+        # Something in this interception (likely the closure or the Registry
+        # lookup) prevents Ruby's GC from collecting anonymous Class objects
+        # created by Kernel.load. Since all autoloading is complete after the
+        # first spec file loads (Rails and spec_helper are fully initialized),
+        # we can safely revert to the pre-Zeitwerk require for subsequent items.
+        # See docs/ruby-gc-bug-gem-loaded-specs.md for the full investigation.
+        if idx == 1 && Kernel.respond_to?(:zeitwerk_original_require, true)
+          Kernel.send(:define_method, :require, Kernel.instance_method(:zeitwerk_original_require))
+          Kernel.send(:private, :require)
         end
-        specs_after = Gem.loaded_specs.size
         GC.start(full_mark: true, immediate_sweep: true)
 
         eg_after = RSpec::Core::ExampleGroup.subclasses.count
-        puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after}) loaded_specs=#{specs_before}->#{specs_after} dgr=#{dgr}" if idx > 0
+        puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after})" if idx > 0
 
         # reconfigure rspec
         RSpec.configuration.detail_color = :magenta
