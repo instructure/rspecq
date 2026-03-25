@@ -142,13 +142,16 @@ module RSpecQ
         # paths are already on $LOAD_PATH. We clear loaded_specs starting
         # from the second work item (idx > 0) — the first item needs it
         # for Rails/spec_helper initialization, but subsequent items don't.
-        if idx > 0 && Gem.respond_to?(:discover_gems_on_require) && !Gem.discover_gems_on_require
+        specs_before = Gem.loaded_specs.size
+        dgr = Gem.respond_to?(:discover_gems_on_require) ? Gem.discover_gems_on_require : "n/a"
+        if idx > 0 && dgr == false
           Gem.loaded_specs.clear
         end
+        specs_after = Gem.loaded_specs.size
         GC.start(full_mark: true, immediate_sweep: true)
 
         eg_after = RSpec::Core::ExampleGroup.subclasses.count
-        puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after})" if idx > 0
+        puts "  [eg_sub] before_reset=#{eg_before} after_reset+GC=#{eg_after} (freed=#{eg_before - eg_after}) loaded_specs=#{specs_before}->#{specs_after} dgr=#{dgr}" if idx > 0
 
         # reconfigure rspec
         RSpec.configuration.detail_color = :magenta
