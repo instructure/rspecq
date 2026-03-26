@@ -30,9 +30,11 @@ class TestScheduling < RSpecQTest
     assert_queue_well_formed(worker.queue)
 
     # 1st run with timings, the slow file will be split
+    # chunk_target_duration=0 keeps each example as its own job (no chunking)
     worker = new_worker("scheduling")
     worker.populate_timings = true
     worker.file_split_threshold = 0.2
+    worker.chunk_target_duration = 0
     silent { worker.work }
 
     assert_queue_well_formed(worker.queue)
@@ -47,6 +49,7 @@ class TestScheduling < RSpecQTest
     worker = new_worker("scheduling")
     worker.populate_timings = true
     worker.file_split_threshold = 0.2
+    worker.chunk_target_duration = 0  # 0 disables chunking (each example is its own job)
     silent { worker.try_publish_queue!(worker.queue) }
 
     assert_equal [
@@ -54,6 +57,49 @@ class TestScheduling < RSpecQTest
       "./test/sample_suites/scheduling/spec/foo_spec.rb[1:1]",
       "./test/sample_suites/scheduling/spec/bar_spec.rb",
     ], worker.queue.unprocessed_jobs
+  end
+
+  def test_time_balanced_chunks
+    # 1st run: no splitting, records file-level timing for foo_spec.rb (~0.3s)
+    worker = new_worker("scheduling")
+    worker.populate_timings = true
+    silent { worker.work }
+
+    assert_queue_well_formed(worker.queue)
+
+    # 2nd run: split + chunk; target=1s groups both examples into one chunk
+    worker = new_worker("scheduling")
+    worker.populate_timings = true
+    worker.file_split_threshold = 0.2
+    worker.chunk_target_duration = 1
+    silent { worker.work }
+
+    assert_queue_well_formed(worker.queue)
+
+    # Both examples from foo_spec.rb are combined into a single chunk job
+    processed = worker.queue.processed_jobs
+    assert_equal 2, processed.size, "Expected 2 jobs: 1 chunk + bar_spec.rb"
+    assert processed.any? { |j| j.include?("+") }, "Expected at least one chunk job"
+    assert processed.any? { |j| j == "./test/sample_suites/scheduling/spec/bar_spec.rb" }
+
+    chunk_job = processed.find { |j| j.include?("+") }
+    parts = chunk_job.split("+")
+    assert_equal 2, parts.size, "Chunk should contain both examples from foo_spec.rb"
+    assert parts.all? { |p| p.start_with?("./test/sample_suites/scheduling/spec/foo_spec.rb[") }
+
+    # 3rd run: per-example timings now in Redis; verify ordering within chunk
+    worker = new_worker("scheduling")
+    worker.populate_timings = true
+    worker.file_split_threshold = 0.2
+    worker.chunk_target_duration = 1
+    silent { worker.try_publish_queue!(worker.queue) }
+
+    unprocessed = worker.queue.unprocessed_jobs
+    assert_equal 2, unprocessed.size
+    # The chunk (slowest total ~0.3s) should be scheduled before bar_spec.rb
+    assert unprocessed.first.include?("+"), "Chunk job should be scheduled first"
+    # Within the chunk, the slowest example [1:2:1] (~0.2s) should come first
+    assert unprocessed.first.start_with?("./test/sample_suites/scheduling/spec/foo_spec.rb[1:2:1]")
   end
 
   def test_untimed_jobs_scheduled_in_the_middle
@@ -87,6 +133,7 @@ class TestScheduling < RSpecQTest
 
     worker = new_worker("deprecation_warning")
     worker.file_split_threshold = 0.2
+    worker.chunk_target_duration = 0  # 0 disables chunking (each example is its own job)
     silent { worker.work }
 
     assert_queue_well_formed(worker.queue)
