@@ -27,6 +27,7 @@ else
   worker.rspec_args = config.rspec_args
   worker.populate_timings = config.timings
   worker.file_split_threshold = config.file_split_threshold
+  worker.chunk_target_duration = config.chunk_target_duration
   worker.max_requeues = config.max_requeues
   worker.queue_wait_timeout = config.queue_wait_timeout
   worker.fail_fast = config.fail_fast

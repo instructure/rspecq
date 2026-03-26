@@ -71,6 +71,13 @@ module RSpecQ
     # Defaults to nil
     attr_accessor :rspec_args
 
+    # Target duration in seconds for time-balanced example chunks.
+    # When splitting slow files, examples are grouped into chunks of
+    # approximately this duration to reduce Kernel.load calls.
+    #
+    # Defaults to 30
+    attr_accessor :chunk_target_duration
+
     attr_reader :queue
 
     def initialize(build_id:, worker_id:, redis_opts:, worker_liveness_sec:)
@@ -89,6 +96,7 @@ module RSpecQ
       @seed = srand && (srand % 0xFFFF)
       @reproduction = false
       @junit_output = nil
+      @chunk_target_duration = 30
 
       RSpec::Core::Formatters.register(Formatters::JobTimingRecorder, :dump_summary)
       RSpec::Core::Formatters.register(Formatters::ExampleCountRecorder, :dump_summary)
@@ -99,6 +107,12 @@ module RSpecQ
 
     def work
       puts "Working for build #{@build_id} (worker=#{@worker_id})"
+
+      # If this worker crashed previously (OOM kill, etc.), it may have a job
+      # stuck in the running hash. Recover it before doing anything else —
+      # otherwise reserve_job will silently overwrite it.
+      recovered = queue.recover_own_job
+      puts "Recovered abandoned job from previous crash: #{recovered}" if recovered
 
       try_publish_queue!(queue)
       queue.wait_until_published(queue_wait_timeout)
@@ -151,7 +165,7 @@ module RSpecQ
           RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
         end
 
-        args = [*rspec_args, "--format", "progress", job]
+        args = [*rspec_args, "--format", "progress", *job.split("+")]
         opts = RSpec::Core::ConfigurationOptions.new(args)
 
         _result = RSpec::Core::Runner.new(opts).run($stderr, $stdout)
@@ -206,7 +220,9 @@ module RSpecQ
 
       if slow_files.any?
         jobs.concat(files_to_run - slow_files)
-        jobs.concat(files_to_example_ids(slow_files))
+        example_ids = files_to_example_ids(slow_files)
+        chunks = build_time_balanced_chunks(example_ids, timings, chunk_target_duration)
+        jobs.concat(chunks)
       else
         jobs.concat(files_to_run)
       end
@@ -215,11 +231,17 @@ module RSpecQ
 
       # assign timings (based on previous runs) to all jobs
       jobs = jobs.each_with_object({}) do |j, h|
-        puts "Untimed job: #{j}" if timings[j].nil?
+        if j.include?("+")
+          # Chunk job: sum per-example timings (or estimate from default)
+          parts = j.split("+")
+          h[j] = parts.sum { |p| timings[p] || default_timing }
+        else
+          puts "Untimed job: #{j}" if timings[j].nil?
 
-        # HEURISTIC: put jobs without previous timings (e.g. a newly added
-        # spec file) in the middle of the queue
-        h[j] = timings[j] || default_timing
+          # HEURISTIC: put jobs without previous timings (e.g. a newly added
+          # spec file) in the middle of the queue
+          h[j] = timings[j] || default_timing
+        end
       end
 
       # sort jobs based on their timings (slowest to be processed first)
@@ -229,6 +251,42 @@ module RSpecQ
     end
 
     private
+
+    # Groups example IDs into time-balanced chunks, one chunk per Kernel.load.
+    # Examples from different files are never mixed. Uses per-example timings
+    # from Redis when available; falls back to file_timing / example_count.
+    #
+    # Returns an array of job strings: single examples are bare IDs, multi-example
+    # chunks are "+"-delimited (e.g. "spec/foo.rb[1:1]+spec/foo.rb[1:2]").
+    def build_time_balanced_chunks(example_ids, timings, target_duration)
+      by_file = example_ids.group_by { |id| id.sub(/\[.*\]$/, "") }
+      chunks = []
+
+      by_file.each do |file, ids|
+        file_timing = timings[file]
+        default_example_timing = file_timing ? file_timing / ids.size : target_duration / 10.0
+
+        timed_ids = ids.map { |id| [id, timings[id] || default_example_timing] }
+        timed_ids.sort_by! { |_, t| -t }
+
+        current_chunk = []
+        current_duration = 0.0
+
+        timed_ids.each do |id, duration|
+          if current_chunk.empty? || current_duration + duration <= target_duration
+            current_chunk << id
+            current_duration += duration
+          else
+            chunks << current_chunk.join("+")
+            current_chunk = [id]
+            current_duration = duration
+          end
+        end
+        chunks << current_chunk.join("+") unless current_chunk.empty?
+      end
+
+      chunks
+    end
 
     def reset_rspec_state!
       RSpec.clear_examples
@@ -248,6 +306,24 @@ module RSpecQ
       # we don't want an error that occured outside of the examples (which
       # would set this to `true`) to stop the worker
       RSpec.world.wants_to_quit = false
+
+      # RSpec.clear_examples calls world.reset which clears world.example_groups,
+      # but NOT world.filtered_examples. That hash is keyed by example group
+      # class objects, so old group classes from the previous job remain
+      # referenced as hash keys and cannot be GC'd.
+      RSpec.world.filtered_examples.clear
+
+      # The shared example group registry is also never cleared by world.reset.
+      # When a spec file defines shared_examples/shared_context inside a
+      # describe block, the example group CLASS becomes a key in the registry's
+      # internal hash. Each `load` of a spec file creates new group classes
+      # that get pinned as hash keys, preventing GC of the entire class tree
+      # (including onceler Marshal blobs). We clear per-group entries but
+      # preserve top-level (:main) shared examples from support files, which
+      # are loaded once via `require` and won't be re-defined.
+      RSpec.world.shared_example_group_registry
+           .send(:shared_example_groups)
+           .reject! { |k, _| k != :main }
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual

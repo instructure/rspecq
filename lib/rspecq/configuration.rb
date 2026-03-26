@@ -8,6 +8,7 @@ module RSpecQ
   # for rspec.
   Configuration = Struct.new(
     :build,
+    :chunk_target_duration,
     :exclude_pattern,
     :fail_fast,
     :files_or_dirs_to_run,
