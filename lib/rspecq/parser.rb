@@ -8,6 +8,12 @@ module RSpecQ
     DEFAULT_QUEUE_WAIT_TIMEOUT = 30
     DEFAULT_FAIL_FAST = 0
     DEFAULT_WORKER_LIVENESS_SEC = 60
+    DEFAULT_REDIS_CONNECT_TIMEOUT = 1.0
+    DEFAULT_REDIS_READ_TIMEOUT = 5.0
+    DEFAULT_REDIS_WRITE_TIMEOUT = 5.0
+    # Comma-separated backoff (seconds) before each reconnect attempt. An empty
+    # value disables reconnects. See Configuration for how this is parsed.
+    DEFAULT_REDIS_RECONNECT_ATTEMPTS = "0.05,0.1,0.25,0.5,1.0".freeze
 
     def self.parse!(args)
       new(args).parse!
@@ -82,6 +88,28 @@ module RSpecQ
         o.on("--redis-url URL", "The URL of the Redis host to connect to " \
                                 "(e.g.: redis://127.0.0.1:6379/0).") do |v|
           opts[:redis_url] = v
+        end
+
+        o.on("--redis-connect-timeout N", Float, "Seconds to wait when establishing " \
+                                                 "a Redis connection (default: #{DEFAULT_REDIS_CONNECT_TIMEOUT}).") do |v|
+          opts[:redis_connect_timeout] = v
+        end
+
+        o.on("--redis-read-timeout N", Float, "Seconds to wait for a Redis read " \
+                                              "(default: #{DEFAULT_REDIS_READ_TIMEOUT}).") do |v|
+          opts[:redis_read_timeout] = v
+        end
+
+        o.on("--redis-write-timeout N", Float, "Seconds to wait for a Redis write " \
+                                               "(default: #{DEFAULT_REDIS_WRITE_TIMEOUT}).") do |v|
+          opts[:redis_write_timeout] = v
+        end
+
+        o.on("--redis-reconnect-attempts LIST", "Comma-separated backoff (seconds) " \
+                                                "before each Redis reconnect attempt, e.g. " \
+                                                "\"#{DEFAULT_REDIS_RECONNECT_ATTEMPTS}\". " \
+                                                "Empty disables reconnects.") do |v|
+          opts[:redis_reconnect_attempts] = v
         end
 
         o.on("--update-timings", "Update the global job timings key with the " \
@@ -183,6 +211,10 @@ module RSpecQ
       opts[:max_requeues] ||= Integer(ENV["RSPECQ_MAX_REQUEUES"] || DEFAULT_MAX_REQUEUES)
       opts[:queue_wait_timeout] ||= Integer(ENV["RSPECQ_QUEUE_WAIT_TIMEOUT"] || DEFAULT_QUEUE_WAIT_TIMEOUT)
       opts[:redis_url] ||= ENV["RSPECQ_REDIS_URL"]
+      opts[:redis_connect_timeout] ||= env_float("RSPECQ_REDIS_CONNECT_TIMEOUT", DEFAULT_REDIS_CONNECT_TIMEOUT)
+      opts[:redis_read_timeout] ||= env_float("RSPECQ_REDIS_READ_TIMEOUT", DEFAULT_REDIS_READ_TIMEOUT)
+      opts[:redis_write_timeout] ||= env_float("RSPECQ_REDIS_WRITE_TIMEOUT", DEFAULT_REDIS_WRITE_TIMEOUT)
+      opts[:redis_reconnect_attempts] ||= ENV["RSPECQ_REDIS_RECONNECT_ATTEMPTS"] || DEFAULT_REDIS_RECONNECT_ATTEMPTS
       opts[:fail_fast] ||= Integer(ENV["RSPECQ_FAIL_FAST"] || DEFAULT_FAIL_FAST)
       opts[:reproduction] ||= env_set?("RSPECQ_REPRODUCTION")
       opts[:junit_output] ||= ENV["RSPECQ_JUNIT_OUTPUT"]
@@ -194,6 +226,14 @@ module RSpecQ
 
     def env_set?(var)
       ["1", "true"].include?(ENV[var])
+    end
+
+    # A Float from `var`, treating a blank value (unset or empty/whitespace) as
+    # absent and falling back to `default`. Jenkins string parameters commonly
+    # default to "", which would otherwise crash Float("").
+    def env_float(var, default)
+      value = ENV[var]
+      value.nil? || value.strip.empty? ? default : Float(value)
     end
   end
 end
