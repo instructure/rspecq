@@ -3,6 +3,15 @@ require "rspecq"
 
 config = RSpecQ::Configuration.new(ARGV)
 
+# Log the effective Redis connection resilience settings so they can be
+# verified from the build console (e.g. confirming env overrides took effect).
+redis_conn = config.redis_opts
+puts "[rspecq] redis connection: " \
+     "connect_timeout=#{redis_conn[:connect_timeout]} " \
+     "read_timeout=#{redis_conn[:read_timeout]} " \
+     "write_timeout=#{redis_conn[:write_timeout]} " \
+     "reconnect_attempts=#{redis_conn[:reconnect_attempts].inspect}"
+
 Sentry.init if ENV['SENTRY_DSN']
 
 if config.report?
