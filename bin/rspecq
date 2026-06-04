@@ -3,8 +3,8 @@ require "rspecq"
 
 config = RSpecQ::Configuration.new(ARGV)
 
-# Log the effective Redis connection resilience settings so they can be
-# verified from the build console (e.g. confirming env overrides took effect).
+# Log the Redis connection resilience settings so they can be
+# verified from the build console
 redis_conn = config.redis_opts
 puts "[rspecq] redis connection: " \
      "connect_timeout=#{redis_conn[:connect_timeout]} " \

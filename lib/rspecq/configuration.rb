@@ -56,15 +56,6 @@ module RSpecQ
                           { host: redis_host }
                         end
 
-      # The queue lives on a Redis instance that is shared across all CI
-      # builds. Redis is single-threaded, so a long O(N) command from another
-      # build (or an idle-connection reap / failover on the shared node) can
-      # briefly stall or drop our connection. redis-client's defaults
-      # (1.0s timeouts, reconnect_attempts: 0) turn any such blip into a fatal
-      # CannotConnectError. We use more forgiving timeouts and retry the
-      # dropped-connection case with backoff so a transient hiccup is a
-      # non-event. All four are tunable (see Parser) so a build can adjust
-      # resilience to the state of the shared Redis without a code change.
       self.redis_opts = redis_opts.merge(
         connect_timeout: redis_connect_timeout,
         read_timeout: redis_read_timeout,
