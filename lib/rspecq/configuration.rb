@@ -20,6 +20,10 @@ module RSpecQ
     :redis_host,
     :redis_url,
     :redis_opts,
+    :redis_connect_timeout,
+    :redis_read_timeout,
+    :redis_write_timeout,
+    :redis_reconnect_attempts,
     :report,
     :report_timeout,
     :reproduction,
@@ -57,13 +61,15 @@ module RSpecQ
       # build (or an idle-connection reap / failover on the shared node) can
       # briefly stall or drop our connection. redis-client's defaults
       # (1.0s timeouts, reconnect_attempts: 0) turn any such blip into a fatal
-      # CannotConnectError. Use more forgiving timeouts and retry the dropped-
-      # connection case with backoff so a transient hiccup is a non-event.
+      # CannotConnectError. We use more forgiving timeouts and retry the
+      # dropped-connection case with backoff so a transient hiccup is a
+      # non-event. All four are tunable (see Parser) so a build can adjust
+      # resilience to the state of the shared Redis without a code change.
       self.redis_opts = redis_opts.merge(
-        connect_timeout: 1.0,
-        read_timeout: 5.0,
-        write_timeout: 5.0,
-        reconnect_attempts: [0.05, 0.1, 0.25, 0.5, 1.0]
+        connect_timeout: redis_connect_timeout,
+        read_timeout: redis_read_timeout,
+        write_timeout: redis_write_timeout,
+        reconnect_attempts: parse_reconnect_attempts(redis_reconnect_attempts)
       )
     end
 
@@ -87,6 +93,18 @@ module RSpecQ
           file_or_folder
         end
       end.uniq
+    end
+
+    private
+
+    # Coerces the reconnect_attempts option into the form redis-client expects.
+    # The option is a comma-separated list of backoff durations in seconds
+    # (e.g. "0.05,0.1,0.25,0.5,1.0"); each entry is how long to sleep before
+    # that retry. An empty/blank value (including whitespace) disables
+    # reconnects (false).
+    def parse_reconnect_attempts(value)
+      attempts = value.to_s.split(",").map(&:strip).reject(&:empty?).map { |v| Float(v) }
+      attempts.empty? ? false : attempts
     end
   end
 end

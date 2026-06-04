@@ -68,6 +68,10 @@ OPTIONS:
     -r, --redis HOST                 --redis is deprecated. Use --redis-host or --redis-url instead. Redis host to connect to (default: 127.0.0.1).
         --redis-host HOST            Redis host to connect to (default: 127.0.0.1).
         --redis-url URL              Redis URL to connect to (e.g.: redis://127.0.0.1:6379/0).
+        --redis-connect-timeout N    Seconds to wait when establishing a Redis connection (default: 1.0).
+        --redis-read-timeout N       Seconds to wait for a Redis read (default: 5.0).
+        --redis-write-timeout N      Seconds to wait for a Redis write (default: 5.0).
+        --redis-reconnect-attempts LIST  Comma-separated backoff (seconds) before each Redis reconnect attempt, e.g. "0.05,0.1,0.25,0.5,1.0". Empty disables reconnects.
         --update-timings             Update the global job timings key with the timings of this build. Note: This key is used as the basis for job scheduling.
         --file-split-threshold N     Split spec files slower than N seconds and schedule them as individual examples.
         --report                     Enable reporter mode: do not pull tests off the queue; instead print build progress and exit when it's finished.
@@ -103,6 +107,10 @@ $ RSPECQ_BUILD=123 RSPECQ_WORKDER=foo1 rspecq spec/
 | `RSPECQ_MAX_REQUEUES` | Max requests |
 | `RSPECQ_QUEUE_WAIT_TIMEOUT` | Queue wait timeout |
 | `RSPECQ_REDIS_URL` | Redis URL |
+| `RSPECQ_REDIS_CONNECT_TIMEOUT` | Seconds to wait when establishing a Redis connection (default: 1.0) |
+| `RSPECQ_REDIS_READ_TIMEOUT` | Seconds to wait for a Redis read (default: 5.0) |
+| `RSPECQ_REDIS_WRITE_TIMEOUT` | Seconds to wait for a Redis write (default: 5.0) |
+| `RSPECQ_REDIS_RECONNECT_ATTEMPTS` | Comma-separated backoff (seconds) before each Redis reconnect attempt (default: `0.05,0.1,0.25,0.5,1.0`); empty disables reconnects |
 | `RSPECQ_WORKER_LIVENESS_SEC` | Worker liveness timeout in seconds |
 | `RSPECQ_FAIL_FAST` | Fail fast |
 | `RSPECQ_REPORTER_RERUN_COMMAND_SKIP` | Do not report flaky test's rerun command |
