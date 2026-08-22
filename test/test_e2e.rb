@@ -26,8 +26,8 @@ class TestEndToEnd < RSpecQTest
     assert_equal 3 + 3 + 5, queue.example_count
 
     assert_equal(
-      { "./spec/fail_1_spec.rb[1:2]" => "3",
-        "./spec/fail_2_spec.rb[1:2]" => "3" },
+      { "./spec/fail_1_spec.rb[1:2]" => 3,
+        "./spec/fail_2_spec.rb[1:2]" => 3 },
       queue.requeued_jobs
     )
   end
@@ -50,7 +50,7 @@ class TestEndToEnd < RSpecQTest
       "./spec/foo_spec.rb[1:1]",
     ], queue
 
-    assert_equal({ "./spec/foo_spec.rb[1:1]" => "2" }, queue.requeued_jobs)
+    assert_equal({ "./spec/foo_spec.rb[1:1]" => 2 }, queue.requeued_jobs)
   end
 
   def test_flakey_suite_without_retries
@@ -174,7 +174,7 @@ class TestEndToEnd < RSpecQTest
       "./spec/foo_spec.rb[1:1]",
     ], queue
 
-    assert_equal({ "./spec/foo_spec.rb[1:1]" => "2" }, queue.requeued_jobs)
+    assert_equal({ "./spec/foo_spec.rb[1:1]" => 2 }, queue.requeued_jobs)
     assert File.exist?("test/sample_suites/flakey_suite/test/test_results/test.0.xml")
     assert File.exist?("test/sample_suites/flakey_suite/test/test_results/test.1.xml")
     assert File.exist?("test/sample_suites/flakey_suite/test/test_results/test.2.xml")

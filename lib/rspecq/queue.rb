@@ -32,6 +32,7 @@ module RSpecQ
       local worker_heartbeats = KEYS[1]
       local queue_running = KEYS[2]
       local queue_unprocessed = KEYS[3]
+      local queue_lost = KEYS[4]
       local time_now = ARGV[1]
       local timeout = ARGV[2]
 
@@ -41,7 +42,9 @@ module RSpecQ
         if job then
           redis.call('lpush', queue_unprocessed, job)
           redis.call('hdel', queue_running, worker)
-          return job
+          redis.call('zincrby', queue_lost, 1, job)
+
+          return {job, worker}
         end
       end
 
@@ -169,13 +172,20 @@ module RSpecQ
         keys: [
           key_worker_heartbeats,
           key_queue_running,
-          key_queue_unprocessed
+          key_queue_unprocessed,
+          key_queue_lost
         ],
         argv: [
           current_time,
           @worker_liveness_sec
         ]
       )
+    end
+
+    # Number of unique jobs that were lost and requeued (e.g. by abnormal
+    # worker termination). A job could be lost more than once (unlikely).
+    def lost_jobs_count
+      @redis.zcard(key_queue_lost)
     end
 
     # NOTE: The same job might happen to be acknowledged more than once, in
@@ -269,6 +279,11 @@ module RSpecQ
       end
     end
 
+    # This build's recorded duration for a single job (seconds), or nil.
+    def job_build_timing(job)
+      @redis.zscore(key_build_timings, job)
+    end
+
     # Total worker execution time (sum of all job durations) for this build.
     def total_execution_time_ms
       Integer(@redis.get(key_build_execution_time_ms) || 0)
@@ -308,7 +323,7 @@ module RSpecQ
     end
 
     def requeued_jobs
-      @redis.hgetall(key_requeues)
+      @redis.hgetall(key_requeues).transform_values(&:to_i)
     end
 
     def become_master
@@ -452,6 +467,11 @@ module RSpecQ
     # the queue exhausted, or fail-fast).
     def key_queue_finished_at
       key("queue", "finished_at")
+    end
+
+    # redis: ZSET<job => times_lost>
+    def key_queue_lost
+      key("queue", "lost")
     end
 
     # Contains regular RSpec example failures.

@@ -106,13 +106,18 @@ module RSpecQ
 
       errors.each { |_job, msg| summary << msg }
 
+      requeues = @queue.requeued_jobs.values.sum
+
       summary << "\n"
       summary << "Total results:\n"
       summary << "  #{@queue.example_count} examples "     \
                  "(#{@queue.processed_jobs_count} jobs), " \
                  "#{failures.count} failures, "            \
-                 "#{errors.count} errors"
-      summary << "\n\n"
+                 "#{errors.count} errors, "                \
+                 "#{requeues} requeues"
+      summary << ", #{flaky_jobs.count} flaky" if flaky_jobs.any?
+      summary << ", #{@queue.lost_jobs_count} lost jobs (unique)" if @queue.lost_jobs_count.positive?
+      summary << "\n\n\n"
 
       from_elected_master, from_queue_ready = test_durations
       if from_elected_master
@@ -128,8 +133,9 @@ module RSpecQ
         summary << "\n\n"
         summary << "Flaky jobs detected (count=#{flaky_jobs.count}):\n"
         flaky_jobs.each do |j|
+          job_timing = (jt = @queue.job_build_timing(j)) ? humanize_duration(jt.to_i) : "---"
           summary << RSpec::Core::Formatters::ConsoleCodes.wrap(
-            "#{@queue.job_location(j)} @ #{@queue.failed_job_worker(j)}\n",
+            "#{@queue.job_location(j)} @ #{@queue.failed_job_worker(j)} timing=#{job_timing}\n",
             RSpec.configuration.pending_color
           )
 
