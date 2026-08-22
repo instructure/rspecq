@@ -3,8 +3,9 @@ require "securerandom"
 require "rspecq"
 
 module TestHelpers
-  REDIS_OPTS = { host: "127.0.0.1" }.freeze
-  EXEC_CMD = "bundle exec rspecq".freeze
+  REDIS_URL = ENV.fetch("RSPECQ_TEST_REDIS_URL", "redis://127.0.0.1:6379").freeze
+  REDIS_OPTS = { url: REDIS_URL }.freeze
+  EXEC_CMD = "bundle exec rspecq --redis-url #{REDIS_URL}".freeze
 
   def rand_id
     SecureRandom.hex(4)
