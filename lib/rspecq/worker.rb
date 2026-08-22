@@ -131,7 +131,10 @@ module RSpecQ
         # to `requeue_lost_job` inside the work loop
         update_heartbeat
 
-        return if queue.build_failed_fast?
+        if queue.build_failed_fast?
+          queue.try_mark_finished
+          return
+        end
 
         lost = queue.requeue_lost_job
         puts "Requeued lost job: #{lost}" if lost
@@ -141,7 +144,10 @@ module RSpecQ
         job = queue.reserve_job
 
         # build is finished
-        return if job.nil? && queue.exhausted?
+        if job.nil? && queue.exhausted?
+          queue.try_mark_finished
+          return
+        end
 
         if job.nil?
           # backoff if no job is available
@@ -198,6 +204,8 @@ module RSpecQ
 
     def try_publish_queue!(queue)
       return if !queue.become_master
+
+      queue.mark_elected_master_at
 
       if reproduction
         q_size = queue.publish(files_or_dirs_to_run, fail_fast)

@@ -31,33 +31,32 @@ module RSpecQ
       reported_failures = {}
       failure_heading_printed = false
 
-      tests_duration = measure_duration do
-        @timeout.times do
-          @queue.example_failures.each do |job, rspec_output|
-            next if reported_failures[job]
+      @timeout.times do
+        @queue.example_failures.each do |job, rspec_output|
+          next if reported_failures[job]
 
-            if !failure_heading_printed
-              puts "\nFailures:\n"
-              failure_heading_printed = true
-            end
-
-            reported_failures[job] = true
-            puts failure_formatted(rspec_output)
+          if !failure_heading_printed
+            puts "\nFailures:\n"
+            failure_heading_printed = true
           end
 
-          unless @queue.exhausted? || @queue.build_failed_fast?
-            sleep 1
-            next
-          end
-
-          finished = true
-          break
+          reported_failures[job] = true
+          puts failure_formatted(rspec_output)
         end
+
+        unless @queue.exhausted? || @queue.build_failed_fast?
+          sleep 1
+          next
+        end
+
+        finished = true
+        break
       end
 
       raise "Build not finished after #{@timeout} seconds" if !finished
 
-      @queue.record_build_time(tests_duration)
+      build_duration = test_durations&.first
+      @queue.record_build_time(build_duration) if build_duration
 
       if @update_timings && @queue.build_successful?
         if @timings_key
@@ -71,24 +70,23 @@ module RSpecQ
 
       flaky_jobs = @queue.flaky_jobs
 
-      puts summary(@queue.example_failures, @queue.non_example_errors,
-        flaky_jobs, humanize_duration(tests_duration))
+      puts summary(@queue.example_failures, @queue.non_example_errors, flaky_jobs)
 
-      flaky_jobs_to_sentry(flaky_jobs, tests_duration)
+      flaky_jobs_to_sentry(flaky_jobs, build_duration)
 
       exit 1 if !@queue.build_successful?
     end
 
     private
 
-    def measure_duration
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      yield
-      (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).round(2)
+    # Two build durations (secs): from master election, and from queue ready.
+    # nil until the build has both a start and a finish timestamp.
+    def test_durations
+      @test_durations ||= @queue.took_times_secs
     end
 
     # We try to keep this output consistent with RSpec's original output
-    def summary(failures, errors, flaky_jobs, duration)
+    def summary(failures, errors, flaky_jobs)
       failed_examples_section = "\nFailed examples:\n\n"
 
       failures.each do |_job, msg|
@@ -115,7 +113,16 @@ module RSpecQ
                  "#{failures.count} failures, "            \
                  "#{errors.count} errors"
       summary << "\n\n"
-      summary << "Spec execution time: #{duration}"
+
+      from_elected_master, from_queue_ready = test_durations
+      if from_elected_master
+        summary << "Spec time (from elected master): #{humanize_duration(from_elected_master)}\n"
+      end
+      if from_queue_ready
+        summary << "Spec time (from queue ready): #{humanize_duration(from_queue_ready)}\n"
+      end
+      summary << "Worker total execution time: " \
+                 "#{humanize_duration(@queue.total_execution_time_ms / 1000)}"
 
       if !flaky_jobs.empty?
         summary << "\n\n"
@@ -139,8 +146,10 @@ module RSpecQ
       rspec_output.split("\n")[0..-2].join("\n")
     end
 
-    def humanize_duration(seconds)
-      Time.at(seconds).utc.strftime("%H:%M:%S")
+    def humanize_duration(secs)
+      min, sec = secs.divmod(60)
+
+      format("%<min>d:%<sec>02d", min: min, sec: sec)
     end
 
     def flaky_jobs_to_sentry(jobs, build_duration)

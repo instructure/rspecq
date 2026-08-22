@@ -104,11 +104,38 @@ module RSpecQ
 
     # NOTE: jobs will be processed from head to tail (lpop)
     def publish(jobs, fail_fast = 0)
+      time = current_time
       @redis.multi do |pipeline|
         pipeline.hset(key_queue_config, "fail_fast", fail_fast)
         pipeline.rpush(key_queue_unprocessed, jobs)
+        pipeline.setnx(key_queue_ready_at, time)
         pipeline.set(key_queue_status, STATUS_READY)
       end.first
+    end
+
+    # Records when a master worker was elected (start of the whole build).
+    def mark_elected_master_at
+      @redis.set(key_elected_master_at, current_time)
+    end
+
+    # Marks the build finished (first caller wins), for build-duration timing.
+    def try_mark_finished
+      @redis.setnx(key_queue_finished_at, current_time)
+    end
+
+    # [seconds from master election, seconds from queue ready] to finish, or
+    # nil if the build has not both started and finished.
+    def took_times_secs
+      elected_master_at = @redis.get(key_elected_master_at)
+      ready_at = @redis.get(key_queue_ready_at)
+      finished_at = @redis.get(key_queue_finished_at)
+
+      return nil if elected_master_at.nil? || ready_at.nil? || finished_at.nil?
+
+      [
+        finished_at.to_i - elected_master_at.to_i,
+        finished_at.to_i - ready_at.to_i
+      ]
     end
 
     def reserve_job
@@ -409,6 +436,22 @@ module RSpecQ
     # redis: SET<job>
     def key_queue_processed
       key("queue", "processed")
+    end
+
+    # redis: STRING<timestamp> — when a master worker was elected.
+    def key_elected_master_at
+      key("queue", "elected_master_at")
+    end
+
+    # redis: STRING<timestamp> — when the queue was published (ready).
+    def key_queue_ready_at
+      key("queue", "ready_at")
+    end
+
+    # redis: STRING<timestamp> — when the build finished (first worker to see
+    # the queue exhausted, or fail-fast).
+    def key_queue_finished_at
+      key("queue", "finished_at")
     end
 
     # Contains regular RSpec example failures.
