@@ -12,10 +12,10 @@ module RSpecQ
       def dump_summary(summary)
         if @job.include?("+")
           summary.examples.each do |example|
-            @queue.record_timing(example.id, Float(example.execution_result.run_time))
+            @queue.record_build_timing(example.id, Float(example.execution_result.run_time))
           end
         else
-          @queue.record_timing(@job, Float(summary.duration))
+          @queue.record_build_timing(@job, Float(summary.duration))
         end
       end
     end

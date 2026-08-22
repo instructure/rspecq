@@ -230,10 +230,6 @@ module RSpecQ
       @redis.hset(key_errors, job, message)
     end
 
-    def record_timing(job, duration)
-      @redis.zadd(key_timings, duration, job)
-    end
-
     # Records a job's timing into the per-build timings key (promoted to the
     # global key by the reporter when --update-timings is set). Also accumulates
     # total worker execution time for the build.
@@ -290,11 +286,6 @@ module RSpecQ
 
     def become_master
       @redis.setnx(key_queue_status, STATUS_INITIALIZING)
-    end
-
-    # ordered by execution time desc (slowest are in the head)
-    def timings
-      Hash[@redis.zrevrange(key_timings, 0, -1, withscores: true)]
     end
 
     # Global timings for scheduling, ordered by execution time desc. Whole-file

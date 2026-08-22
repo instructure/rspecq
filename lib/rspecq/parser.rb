@@ -118,6 +118,11 @@ module RSpecQ
           opts[:timings] = v
         end
 
+        o.on("--timings-key KEY", "Promote timings to KEY instead of the default " \
+                                  "global timings key (requires --update-timings).") do |v|
+          opts[:timings_key] = v
+        end
+
         o.on("--file-split-threshold N", Integer, "Split spec files slower than N " \
                                                   "seconds and schedule them as individual examples.") do |v|
           opts[:file_split_threshold] = v
@@ -205,6 +210,7 @@ module RSpecQ
       opts[:seed] ||= ENV["RSPECQ_SEED"]
       opts[:redis_host] ||= ENV["RSPECQ_REDIS"] || DEFAULT_REDIS_HOST
       opts[:timings] = opts.fetch(:timings, env_set?("RSPECQ_UPDATE_TIMINGS"))
+      opts[:timings_key] ||= ENV.fetch("RSPECQ_TIMINGS_KEY", nil)
       opts[:file_split_threshold] ||= Integer(ENV["RSPECQ_FILE_SPLIT_THRESHOLD"] || 9_999_999)
       opts[:report] = opts.fetch(:report, env_set?("RSPECQ_REPORT"))
       opts[:report_timeout] ||= Integer(ENV["RSPECQ_REPORT_TIMEOUT"] || DEFAULT_REPORT_TIMEOUT)

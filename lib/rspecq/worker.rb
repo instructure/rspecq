@@ -173,9 +173,10 @@ module RSpecQ
         RSpec.configuration.add_formatter(Formatters::ExampleCountRecorder.new(queue))
         RSpec.configuration.add_formatter(Formatters::WorkerHeartbeatRecorder.new(self))
 
-        if populate_timings
-          RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
-        end
+        # Recording is always-on: every build records per-job timings into the
+        # build-scoped key. The reporter promotes them to the global key only
+        # when --update-timings is set.
+        RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
 
         args = [*rspec_args, "--format", "progress", *job.split("+")]
         opts = RSpec::Core::ConfigurationOptions.new(args)
@@ -212,7 +213,7 @@ module RSpecQ
       RSpec.configuration.files_or_directories_to_run = files_or_dirs_to_run
       files_to_run = RSpec.configuration.files_to_run.map { |j| relative_path(j) }
 
-      timings = queue.timings
+      timings = queue.global_timings
       if timings.empty?
         q_size = queue.publish(files_to_run.shuffle, fail_fast)
         log_event(

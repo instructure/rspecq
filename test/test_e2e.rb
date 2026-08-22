@@ -84,7 +84,9 @@ class TestEndToEnd < RSpecQTest
   end
 
   def test_timings_update
-    queue = exec_build("timings", "--update-timings")
+    build_id = rand_id
+    queue = exec_build("timings", build_id: build_id)
+    exec_reporter("--update-timings", build_id: build_id)
 
     assert queue.build_successful?
 
@@ -94,26 +96,28 @@ class TestEndToEnd < RSpecQTest
       "./spec/medium_spec.rb",
       "./spec/slow_spec.rb",
       "./spec/very_slow_spec.rb",
-    ], queue.timings.sort_by { |_, v| v }.map(&:first)
+    ], queue.global_timings.sort_by { |_, v| v }.map(&:first)
   end
 
   def test_timings_no_update
     queue = exec_build("timings")
 
     assert queue.build_successful?
-    assert_empty queue.timings
+    assert_empty queue.global_timings
   end
 
   def test_spec_file_splitting
-    queue = exec_build("spec_file_splitting", "--update-timings")
+    build_id = rand_id
+    queue = exec_build("spec_file_splitting", build_id: build_id)
+    exec_reporter("--update-timings", build_id: build_id)
     assert queue.build_successful?
-    refute_empty queue.timings
+    refute_empty queue.global_timings
 
     # chunk-target-duration=0 disables chunking so each example stays its own job
     queue = exec_build("spec_file_splitting", "--file-split-threshold 1 --chunk-target-duration 0")
 
     assert queue.build_successful?
-    refute_empty queue.timings
+    refute_empty queue.global_timings
     assert_processed_jobs([
       "./spec/slow_spec.rb[1:2:1]",
       "./spec/slow_spec.rb[1:1]",
@@ -122,9 +126,11 @@ class TestEndToEnd < RSpecQTest
   end
 
   def test_spec_file_splitting_with_chunks
-    queue = exec_build("spec_file_splitting", "--update-timings")
+    build_id = rand_id
+    queue = exec_build("spec_file_splitting", build_id: build_id)
+    exec_reporter("--update-timings", build_id: build_id)
     assert queue.build_successful?
-    refute_empty queue.timings
+    refute_empty queue.global_timings
 
     # chunk-target-duration=2 groups both slow_spec.rb examples (~1.2s total) into one chunk
     queue = exec_build("spec_file_splitting", "--file-split-threshold 1 --chunk-target-duration 2")

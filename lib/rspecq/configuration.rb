@@ -30,6 +30,7 @@ module RSpecQ
     :rspec_args,
     :seed,
     :timings,
+    :timings_key,
     :worker,
     :worker_liveness_sec,
     keyword_init: true
