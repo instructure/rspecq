@@ -21,11 +21,6 @@ module RSpecQ
     # Defaults to "spec" (similar to RSpec)
     attr_accessor :files_or_dirs_to_run
 
-    # If true, job timings will be populated in the global Redis timings key
-    #
-    # Defaults to false
-    attr_accessor :populate_timings
-
     # If set, spec files that are known to take more than this value to finish,
     # will be split and scheduled on a per-example basis.
     #
@@ -88,7 +83,6 @@ module RSpecQ
       @queue = Queue.new(build_id, worker_id, redis_opts, worker_liveness_sec)
       @fail_fast = 0
       @files_or_dirs_to_run = ["spec"]
-      @populate_timings = false
       @file_split_threshold = 999_999
       @heartbeat_updated_at = nil
       @max_requeues = 3
@@ -400,7 +394,6 @@ module RSpecQ
         worker: @worker_id,
         queue: queue.inspect,
         files_or_dirs_to_run: files_or_dirs_to_run,
-        populate_timings: populate_timings,
         file_split_threshold: file_split_threshold,
         heartbeat_updated_at: @heartbeat_updated_at,
         object: inspect,

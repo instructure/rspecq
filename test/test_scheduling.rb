@@ -46,7 +46,6 @@ class TestScheduling < RSpecQTest
 
     # 2nd run with timings; individual example jobs will also have timings now
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     worker.file_split_threshold = 0.2
     worker.chunk_target_duration = 0  # 0 disables chunking (each example is its own job)
     silent { worker.try_publish_queue!(worker.queue) }
@@ -88,7 +87,6 @@ class TestScheduling < RSpecQTest
 
     # 3rd run: per-example timings now in Redis; verify ordering within chunk
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     worker.file_split_threshold = 0.2
     worker.chunk_target_duration = 1
     silent { worker.try_publish_queue!(worker.queue) }

@@ -36,7 +36,6 @@ else
 
   worker.files_or_dirs_to_run = config.files_or_dirs_to_run if config.files_or_dirs_to_run
   worker.rspec_args = config.rspec_args
-  worker.populate_timings = config.timings
   worker.file_split_threshold = config.file_split_threshold
   worker.chunk_target_duration = config.chunk_target_duration
   worker.max_requeues = config.max_requeues
