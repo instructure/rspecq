@@ -87,6 +87,11 @@ module RSpecQ
     STATUS_INITIALIZING = "initializing".freeze
     STATUS_READY = "ready".freeze
 
+    # Per-build timings are only needed until the reporter promotes them to the
+    # global key; expire them so always-on recording can't grow Redis unbounded.
+    # Interim measure until comprehensive key TTLs land (DE-1805).
+    BUILD_TIMINGS_TTL_SEC = 86_400
+
     attr_reader :redis
 
     def initialize(build_id, worker_id, redis_opts, worker_liveness_sec)
@@ -229,6 +234,28 @@ module RSpecQ
       @redis.zadd(key_timings, duration, job)
     end
 
+    # Records a job's timing into the per-build timings key (promoted to the
+    # global key by the reporter when --update-timings is set). Also accumulates
+    # total worker execution time for the build.
+    def record_build_timing(job, duration)
+      @redis.pipelined do |pipeline|
+        pipeline.zadd(key_build_timings, duration, job)
+        pipeline.incrby(key_build_execution_time_ms, (duration * 1000).to_i)
+        pipeline.expire(key_build_timings, BUILD_TIMINGS_TTL_SEC)
+        pipeline.expire(key_build_execution_time_ms, BUILD_TIMINGS_TTL_SEC)
+      end
+    end
+
+    # Total worker execution time (sum of all job durations) for this build.
+    def total_execution_time_ms
+      Integer(@redis.get(key_build_execution_time_ms) || 0)
+    end
+
+    # Promotes this build's timings to the global (or a caller-specified) key.
+    def update_global_timings(dst = key_timings)
+      @redis.copy(key_build_timings, dst, replace: true)
+    end
+
     def record_build_time(duration)
       @redis.multi do |pipeline|
         pipeline.lpush(key_build_times, Float(duration))
@@ -268,6 +295,21 @@ module RSpecQ
     # ordered by execution time desc (slowest are in the head)
     def timings
       Hash[@redis.zrevrange(key_timings, 0, -1, withscores: true)]
+    end
+
+    # Global timings for scheduling, ordered by execution time desc. Whole-file
+    # timings are reconstructed from any per-example ("file[...]") entries so the
+    # scheduler can still recognize a split file as slow and re-split it.
+    def global_timings
+      redis_timings = @redis.zrevrange(key_timings, 0, -1, withscores: true).to_h
+
+      whole_file_timings = populate_splitted_file_timings(redis_timings)
+      return redis_timings if whole_file_timings.empty?
+
+      # Real (stored) timings win over reconstructed sums, so a genuine
+      # whole-file run is not overridden by a partial (e.g. requeue) sum.
+      whole_file_timings.merge!(redis_timings)
+      whole_file_timings.sort_by { |_j, d| -d }.to_h
     end
 
     def example_failures
@@ -435,6 +477,17 @@ module RSpecQ
       "timings"
     end
 
+    # redis: ZSET<job => duration>, scoped to this build. Promoted to the global
+    # key_timings by the reporter when --update-timings is set.
+    def key_build_timings
+      key("timings")
+    end
+
+    # redis: STRING<ms> — total worker execution time for this build.
+    def key_build_execution_time_ms
+      key("build_execution_time_ms")
+    end
+
     # redis: LIST<duration>
     #
     # Last build is at the head of the list.
@@ -467,6 +520,21 @@ module RSpecQ
     # before(:all) hooks will mess up our times.
     def current_time
       @redis.time[0]
+    end
+
+    # Reconstructs whole-file timings by summing the timings of a file's
+    # individual per-example ("file[...]") entries.
+    def populate_splitted_file_timings(timings)
+      whole_file_timings = Hash.new(0)
+
+      timings.each do |file, duration|
+        next if !file.include?("[")
+
+        base_file = file.split("[").first
+        whole_file_timings[base_file] += duration
+      end
+
+      whole_file_timings
     end
   end
 end
