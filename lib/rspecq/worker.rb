@@ -203,6 +203,11 @@ module RSpecQ
       end
     end
 
+    # Memoized global timings — read once and reused across the scheduling path.
+    def global_timings
+      @global_timings ||= queue.global_timings
+    end
+
     def try_publish_queue!(queue)
       return if !queue.become_master
 
@@ -222,8 +227,7 @@ module RSpecQ
       RSpec.configuration.files_or_directories_to_run = files_or_dirs_to_run
       files_to_run = RSpec.configuration.files_to_run.map { |j| relative_path(j) }
 
-      timings = queue.global_timings
-      if timings.empty?
+      if global_timings.empty?
         q_size = queue.publish(files_to_run.shuffle, fail_fast)
         log_event(
           "No timings found! Published queue in random order (size=#{q_size})",
@@ -237,7 +241,7 @@ module RSpecQ
       slow_files = []
 
       if file_split_threshold
-        slow_files = timings.take_while do |_job, duration|
+        slow_files = global_timings.take_while do |_job, duration|
           duration >= file_split_threshold
         end.map(&:first) & files_to_run
       end
@@ -245,36 +249,37 @@ module RSpecQ
       if slow_files.any?
         jobs.concat(files_to_run - slow_files)
         example_ids = files_to_example_ids(slow_files)
-        chunks = build_time_balanced_chunks(example_ids, timings, chunk_target_duration)
+        chunks = build_time_balanced_chunks(example_ids, global_timings, chunk_target_duration)
         jobs.concat(chunks)
       else
         jobs.concat(files_to_run)
       end
 
-      default_timing = timings.values[timings.values.size / 2]
-
-      # assign timings (based on previous runs) to all jobs
-      jobs = jobs.each_with_object({}) do |j, h|
-        if j.include?("+")
-          # Chunk job: sum per-example timings (or estimate from default)
-          parts = j.split("+")
-          h[j] = parts.sum { |p| timings[p] || default_timing }
-        else
-          puts "Untimed job: #{j}" if timings[j].nil?
-
-          # HEURISTIC: put jobs without previous timings (e.g. a newly added
-          # spec file) in the middle of the queue
-          h[j] = timings[j] || default_timing
-        end
-      end
-
-      # sort jobs based on their timings (slowest to be processed first)
-      jobs = jobs.sort_by { |_j, t| -t }.map(&:first)
+      jobs = order_jobs_by_timings(jobs)
 
       puts "Published queue (size=#{queue.publish(jobs, fail_fast)})"
     end
 
     private
+
+    # Assign each job its previous timing (chunk jobs sum their examples;
+    # untimed jobs get the median so they land mid-queue), then order slowest
+    # first so the longest jobs start earliest.
+    def order_jobs_by_timings(jobs)
+      default_timing = global_timings.values[global_timings.values.size / 2]
+
+      jobs = jobs.each_with_object({}) do |j, h|
+        if j.include?("+")
+          parts = j.split("+")
+          h[j] = parts.sum { |p| global_timings[p] || default_timing }
+        else
+          puts "Untimed job: #{j}" if global_timings[j].nil?
+          h[j] = global_timings[j] || default_timing
+        end
+      end
+
+      jobs.sort_by { |_j, t| -t }.map(&:first)
+    end
 
     # Groups example IDs into time-balanced chunks, one chunk per Kernel.load.
     # Examples from different files are never mixed. Uses per-example timings
