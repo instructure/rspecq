@@ -55,6 +55,11 @@ module RSpecQ
 
       raise "Build not finished after #{@timeout} seconds" if !finished
 
+      # The reporter can observe the build finished before any worker stamps
+      # finished_at; stamp it here (setnx, first writer wins) so the build
+      # duration — and our canvas-consumed key_build_time — are always recorded.
+      @queue.try_mark_finished
+
       build_duration = test_durations&.first
       @queue.record_build_time(build_duration) if build_duration
 

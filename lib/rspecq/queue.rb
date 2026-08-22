@@ -62,7 +62,7 @@ module RSpecQ
       local location = ARGV[4]
 
       local requeued_times = redis.call('hget', key_requeues, job)
-      if requeued_times and requeued_times >= max_requeues then
+      if requeued_times and tonumber(requeued_times) >= tonumber(max_requeues) then
         return nil
       end
 
