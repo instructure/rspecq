@@ -11,6 +11,7 @@ class TestEndToEnd < RSpecQTest
     queue = exec_build("failing_suite")
 
     refute queue.build_successful?
+    assert_equal RSpecQ::Queue::STATUS_FAILURE, queue.status
     assert queue.fail_fast.zero?
     refute queue.build_failed_fast?
 
@@ -36,6 +37,7 @@ class TestEndToEnd < RSpecQTest
     queue = exec_build("passing_suite")
 
     assert queue.build_successful?
+    assert_equal RSpecQ::Queue::STATUS_SUCCESS, queue.status
     assert_build_not_flakey(queue)
     assert_equal 1, queue.example_count
     assert_equal ["./spec/foo_spec.rb"], queue.processed_jobs
