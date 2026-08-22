@@ -66,6 +66,11 @@ module RSpecQ
     # Defaults to nil
     attr_accessor :rspec_args
 
+    # RSpec tags to filter examples by (e.g. "slow" or "~slow"). Repeatable.
+    #
+    # Defaults to []
+    attr_accessor :tags
+
     # Target duration in seconds for time-balanced example chunks.
     # When splitting slow files, examples are grouped into chunks of
     # approximately this duration to reduce Kernel.load calls.
@@ -89,6 +94,7 @@ module RSpecQ
       @queue_wait_timeout = 30
       @seed = srand && (srand % 0xFFFF)
       @reproduction = false
+      @tags = []
       @junit_output = nil
       @chunk_target_duration = 30
 
@@ -179,6 +185,7 @@ module RSpecQ
         RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
 
         args = [*rspec_args, "--format", "progress", *job.split("+")]
+        tags.each { |tag| args.push("--tag", tag) }
         opts = RSpec::Core::ConfigurationOptions.new(args)
 
         _result = RSpec::Core::Runner.new(opts).run($stderr, $stdout)

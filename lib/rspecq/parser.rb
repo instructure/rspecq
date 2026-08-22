@@ -172,6 +172,12 @@ module RSpecQ
           opts[:reproduction] = v
         end
 
+        o.on("--tag TAG", "Run examples with the specified tag, or exclude examples " \
+                          "by prefixing the tag with ~ (e.g. ~slow). Repeatable. " \
+                          "TAG is passed through to rspec.") do |tag|
+          (opts[:tags] ||= []) << tag
+        end
+
         o.on("--junit-output filepath", String, "Output junit formatted xml " \
                                                 "for CI suites to the defined file path. Substitution parameters " \
                                                 "{{TEST_ENV_NUMBER}} - parallel gem proc number. " \
@@ -223,6 +229,7 @@ module RSpecQ
       opts[:redis_reconnect_attempts] ||= ENV["RSPECQ_REDIS_RECONNECT_ATTEMPTS"] || DEFAULT_REDIS_RECONNECT_ATTEMPTS
       opts[:fail_fast] ||= Integer(ENV["RSPECQ_FAIL_FAST"] || DEFAULT_FAIL_FAST)
       opts[:reproduction] ||= env_set?("RSPECQ_REPRODUCTION")
+      opts[:tags] ||= []
       opts[:junit_output] ||= ENV["RSPECQ_JUNIT_OUTPUT"]
       opts[:include_pattern] ||= ENV["INCLUDE_PATTERN"]
       opts[:exclude_pattern] ||= ENV["EXCLUDE_PATTERN"]

@@ -44,5 +44,6 @@ else
   worker.junit_output = config.junit_output
   worker.seed = Integer(config.seed, 10) if config.seed
   worker.reproduction = config.reproduction
+  worker.tags = config.tags
   worker.work
 end

@@ -29,6 +29,7 @@ module RSpecQ
     :reproduction,
     :rspec_args,
     :seed,
+    :tags,
     :timings,
     :timings_key,
     :worker,
