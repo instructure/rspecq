@@ -36,7 +36,7 @@ class TestQueue < RSpecQTest
   end
 
   def test_publish_returns_jobs_size
-    queue = RSpecQ::Queue.new(rand_id, rand_id, REDIS_OPTS)
+    queue = RSpecQ::Queue.new(rand_id, rand_id, REDIS_OPTS, 60)
 
     assert_equal 2, queue.publish(["job1", "job2"])
   end
