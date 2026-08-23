@@ -91,7 +91,6 @@ module RSpecQ
       @worker_id = worker_id
       @redis = Redis.new(redis_opts.merge(id: worker_id))
       @worker_liveness_sec = worker_liveness_sec
-      @script_shas = {}
     end
 
     # The build's final status once finished: STATUS_SUCCESS or STATUS_FAILURE
@@ -592,15 +591,12 @@ module RSpecQ
 
     private
 
+    # Plain EVAL (not evalsha): canvas fronts Redis with a Twemproxy
+    # compatibility guard that forbids SCRIPT LOAD (which evalsha requires),
+    # while EVAL is allowed. EVAL also lets a shared/proxied Redis stay
+    # scriptless-cache-agnostic.
     def eval_script(script, keys: [], argv: [])
-      sha = @script_shas[script] ||= @redis.script(:load, script)
-      @redis.evalsha(sha, keys: keys, argv: argv)
-    rescue Redis::CommandError => e
-      raise unless e.message.include?("NOSCRIPT")
-
-      # The script was evicted from Redis. Let's reload it.
-      @script_shas[script] = nil
-      retry
+      @redis.eval(script, keys: keys, argv: argv)
     end
 
     def key(*keys)
