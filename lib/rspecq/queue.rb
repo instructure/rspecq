@@ -332,8 +332,12 @@ module RSpecQ
     end
 
     # Promotes this build's timings to the global (or a caller-specified) key.
+    # PERSIST clears the TTL that COPY inherits from the build-scoped source
+    # key; the global timings key is the durable scheduling basis and must not
+    # expire between --update-timings builds.
     def update_global_timings(dst = key_timings)
       @redis.copy(key_build_timings, dst, replace: true)
+      @redis.persist(dst)
     end
 
     def record_build_time(duration)
