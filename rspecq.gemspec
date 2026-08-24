@@ -12,13 +12,16 @@ Gem::Specification.new do |s|
   s.homepage    = "https://github.com/skroutz/rspecq"
   s.license     = "MIT"
 
+  # redis-rb 6.0 requires Ruby 3.2+.
+  s.required_ruby_version = ">= 3.2"
+
   if ENV["CI"] && ENV["RSPEC_CORE"]
     s.add_dependency "rspec-core", ENV["RSPEC_CORE"]
   else
     s.add_dependency "rspec-core"
   end
 
-  s.add_dependency "redis", ">= 4.0", "< 7.0"
+  s.add_dependency "redis", ">= 5.0", "< 7.0"
   s.add_dependency "sentry-ruby"
   s.add_dependency "rspec_junit_formatter"
   s.add_dependency "logger" # sentry-ruby dependency in ruby 3.5 (should be fixed upstream)
