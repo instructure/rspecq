@@ -29,6 +29,11 @@ and [ci-queue](https://github.com/Shopify/ci-queue).
   See [#2](https://github.com/skroutz/rspecq/issues/2).
 - Automatic termination of builds after a certain amount of failures. See [*Fail-fast*](#fail-fast).
 
+## Requirements
+
+- Ruby >= 3.2
+- redis-rb 5.x or 6.x (runs on RESP3, the redis-rb 6.0 default), backed by a Redis server >= 6.2 (the `COPY` command is used to promote build timings).
+
 ## Usage
 
 A worker needs to be given a name and the build it will participate in.

@@ -4,6 +4,10 @@ Breaking changes are prefixed with a "[BREAKING]" label.
 
 ## master (unreleased)
 
+- [BREAKING] Require Ruby >= 3.2 and raise the redis-rb floor to `>= 5.0`
+  (cap `< 7.0`). Verified compatible with redis-rb 6.0 / RESP3.
+- `REDIS_GEM` env var pins the redis-rb version in CI (mirrors `RSPEC_CORE`).
+
 ## 0.7.1 (2021-04-08)
 
 - New env variable RSPECQ_REPORTER_RERUN_COMMAND_SKIP. When set, the reporter

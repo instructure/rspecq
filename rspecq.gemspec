@@ -21,7 +21,13 @@ Gem::Specification.new do |s|
     s.add_dependency "rspec-core"
   end
 
-  s.add_dependency "redis", ">= 5.0", "< 7.0"
+  # In CI, REDIS_GEM pins a specific redis-rb version for the matrix (mirrors
+  # RSPEC_CORE above), since Gemfile.lock is gitignored and resolves fresh.
+  if ENV["CI"] && ENV["REDIS_GEM"]
+    s.add_dependency "redis", ENV["REDIS_GEM"]
+  else
+    s.add_dependency "redis", ">= 5.0", "< 7.0"
+  end
   s.add_dependency "sentry-ruby"
   s.add_dependency "rspec_junit_formatter"
   s.add_dependency "logger" # sentry-ruby dependency in ruby 3.5 (should be fixed upstream)
