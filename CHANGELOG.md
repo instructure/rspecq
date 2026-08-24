@@ -2,7 +2,7 @@
 
 Breaking changes are prefixed with a "[BREAKING]" label.
 
-## master (unreleased)
+## 0.8.0.instructure2 (unreleased)
 
 - [BREAKING] Require Ruby >= 3.2 and raise the redis-rb floor to `>= 5.0`
   (cap `< 7.0`). Verified compatible with redis-rb 6.0 / RESP3.
