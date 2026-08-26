@@ -9,11 +9,14 @@ module RSpecQ
   #
   # Reporters are readers of the queue.
   class Reporter
-    def initialize(build_id:, timeout:, redis_opts:, worker_liveness_sec:, queue_wait_timeout: 30)
+    def initialize(build_id:, timeout:, redis_opts:, worker_liveness_sec:, queue_wait_timeout: 30,
+                   update_timings: false, timings_key: nil)
       @build_id = build_id
       @timeout = timeout
       @queue = Queue.new(build_id, "reporter", redis_opts, worker_liveness_sec)
       @queue_wait_timeout = queue_wait_timeout
+      @update_timings = update_timings
+      @timings_key = timings_key
 
       # We want feedback to be immediately printed to CI users, so
       # we disable buffering.
@@ -28,54 +31,67 @@ module RSpecQ
       reported_failures = {}
       failure_heading_printed = false
 
-      tests_duration = measure_duration do
-        @timeout.times do
-          @queue.example_failures.each do |job, rspec_output|
-            next if reported_failures[job]
+      @timeout.times do
+        @queue.example_failures.each do |job, rspec_output|
+          next if reported_failures[job]
 
-            if !failure_heading_printed
-              puts "\nFailures:\n"
-              failure_heading_printed = true
-            end
-
-            reported_failures[job] = true
-            puts failure_formatted(rspec_output)
+          if !failure_heading_printed
+            puts "\nFailures:\n"
+            failure_heading_printed = true
           end
 
-          unless @queue.exhausted? || @queue.build_failed_fast?
-            sleep 1
-            next
-          end
-
-          finished = true
-          break
+          reported_failures[job] = true
+          puts failure_formatted(rspec_output)
         end
+
+        unless @queue.exhausted? || @queue.build_failed_fast?
+          sleep 1
+          next
+        end
+
+        finished = true
+        break
       end
 
       raise "Build not finished after #{@timeout} seconds" if !finished
 
-      @queue.record_build_time(tests_duration)
+      # The reporter can observe the build finished before any worker stamps
+      # finished_at; stamp it here (setnx, first writer wins) so the build
+      # duration — and our canvas-consumed key_build_time — are always recorded.
+      @queue.try_mark_finished
+
+      build_duration = test_durations&.first
+      @queue.record_build_time(build_duration) if build_duration
+
+      if @update_timings && @queue.build_successful?
+        if @timings_key
+          puts "Updating job timings @ #{@timings_key}"
+          @queue.update_global_timings(@timings_key)
+        else
+          puts "Updating global job timings"
+          @queue.update_global_timings
+        end
+      end
 
       flaky_jobs = @queue.flaky_jobs
 
-      puts summary(@queue.example_failures, @queue.non_example_errors,
-        flaky_jobs, humanize_duration(tests_duration))
+      puts summary(@queue.example_failures, @queue.non_example_errors, flaky_jobs)
 
-      flaky_jobs_to_sentry(flaky_jobs, tests_duration)
+      flaky_jobs_to_sentry(flaky_jobs, build_duration)
 
       exit 1 if !@queue.build_successful?
     end
 
     private
 
-    def measure_duration
-      start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      yield
-      (Process.clock_gettime(Process::CLOCK_MONOTONIC) - start).round(2)
+    # Two build durations (secs): from master election, and from queue ready.
+    # nil until the build has both a start and a finish timestamp.
+    def test_durations
+      @test_durations ||= @queue.took_times_secs
     end
 
     # We try to keep this output consistent with RSpec's original output
-    def summary(failures, errors, flaky_jobs, duration)
+    def summary(failures, errors, flaky_jobs)
       failed_examples_section = "\nFailed examples:\n\n"
 
       failures.each do |_job, msg|
@@ -95,21 +111,36 @@ module RSpecQ
 
       errors.each { |_job, msg| summary << msg }
 
+      requeues = @queue.requeued_jobs.values.sum
+
       summary << "\n"
       summary << "Total results:\n"
       summary << "  #{@queue.example_count} examples "     \
                  "(#{@queue.processed_jobs_count} jobs), " \
                  "#{failures.count} failures, "            \
-                 "#{errors.count} errors"
-      summary << "\n\n"
-      summary << "Spec execution time: #{duration}"
+                 "#{errors.count} errors, "                \
+                 "#{requeues} requeues"
+      summary << ", #{flaky_jobs.count} flaky" if flaky_jobs.any?
+      summary << ", #{@queue.lost_jobs_count} lost jobs (unique)" if @queue.lost_jobs_count.positive?
+      summary << "\n\n\n"
+
+      from_elected_master, from_queue_ready = test_durations
+      if from_elected_master
+        summary << "Spec time (from elected master): #{humanize_duration(from_elected_master)}\n"
+      end
+      if from_queue_ready
+        summary << "Spec time (from queue ready): #{humanize_duration(from_queue_ready)}\n"
+      end
+      summary << "Worker total execution time: " \
+                 "#{humanize_duration(@queue.total_execution_time_ms / 1000)}"
 
       if !flaky_jobs.empty?
         summary << "\n\n"
         summary << "Flaky jobs detected (count=#{flaky_jobs.count}):\n"
         flaky_jobs.each do |j|
+          job_timing = (jt = @queue.job_build_timing(j)) ? humanize_duration(jt.to_i) : "---"
           summary << RSpec::Core::Formatters::ConsoleCodes.wrap(
-            "#{@queue.job_location(j)} @ #{@queue.failed_job_worker(j)}\n",
+            "#{@queue.job_location(j)} @ #{@queue.failed_job_worker(j)} timing=#{job_timing}\n",
             RSpec.configuration.pending_color
           )
 
@@ -126,8 +157,10 @@ module RSpecQ
       rspec_output.split("\n")[0..-2].join("\n")
     end
 
-    def humanize_duration(seconds)
-      Time.at(seconds).utc.strftime("%H:%M:%S")
+    def humanize_duration(secs)
+      min, sec = secs.divmod(60)
+
+      format("%<min>d:%<sec>02d", min: min, sec: sec)
     end
 
     def flaky_jobs_to_sentry(jobs, build_duration)

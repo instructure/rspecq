@@ -21,11 +21,6 @@ module RSpecQ
     # Defaults to "spec" (similar to RSpec)
     attr_accessor :files_or_dirs_to_run
 
-    # If true, job timings will be populated in the global Redis timings key
-    #
-    # Defaults to false
-    attr_accessor :populate_timings
-
     # If set, spec files that are known to take more than this value to finish,
     # will be split and scheduled on a per-example basis.
     #
@@ -71,6 +66,11 @@ module RSpecQ
     # Defaults to nil
     attr_accessor :rspec_args
 
+    # RSpec tags to filter examples by (e.g. "slow" or "~slow"). Repeatable.
+    #
+    # Defaults to []
+    attr_accessor :tags
+
     # Target duration in seconds for time-balanced example chunks.
     # When splitting slow files, examples are grouped into chunks of
     # approximately this duration to reduce Kernel.load calls.
@@ -78,7 +78,7 @@ module RSpecQ
     # Defaults to 30
     attr_accessor :chunk_target_duration
 
-    attr_reader :queue
+    attr_reader :queue, :build_id, :worker_id
 
     def initialize(build_id:, worker_id:, redis_opts:, worker_liveness_sec:)
       @build_id = build_id
@@ -88,13 +88,13 @@ module RSpecQ
       @queue = Queue.new(build_id, worker_id, redis_opts, worker_liveness_sec)
       @fail_fast = 0
       @files_or_dirs_to_run = ["spec"]
-      @populate_timings = false
       @file_split_threshold = 999_999
       @heartbeat_updated_at = nil
       @max_requeues = 3
       @queue_wait_timeout = 30
       @seed = srand && (srand % 0xFFFF)
       @reproduction = false
+      @tags = []
       @junit_output = nil
       @chunk_target_duration = 30
 
@@ -114,28 +114,47 @@ module RSpecQ
       recovered = queue.recover_own_job
       puts "Recovered abandoned job from previous crash: #{recovered}" if recovered
 
-      try_publish_queue!(queue)
+      q_size = try_publish_queue!(queue)
+      puts "Published queue (size=#{q_size})" if q_size
       queue.wait_until_published(queue_wait_timeout)
       queue.save_worker_seed(@worker_id, seed)
+
+      # Use `--seed` to deterministically reproduce test failures
+      # related to randomization by passing the same `--seed` value
+      # as the one that triggered the failure.
+      #
+      # We also use the same seed to feed Rspec's `--seed` option.
+      Kernel.srand(seed)
+
       idx = 0
       loop do
         # we have to bootstrap this so that it can be used in the first call
         # to `requeue_lost_job` inside the work loop
         update_heartbeat
 
-        return if queue.build_failed_fast?
+        if queue.build_failed_fast?
+          queue.try_mark_finished
+          return
+        end
 
-        lost = queue.requeue_lost_job
-        puts "Requeued lost job: #{lost}" if lost
+        lost, lost_worker = queue.requeue_lost_job
+        puts "Requeued lost job: #{lost} from #{lost_worker}" if lost
 
         # TODO: can we make `reserve_job` also act like exhausted? and get
         # rid of `exhausted?` (i.e. return false if no jobs remain)
         job = queue.reserve_job
 
         # build is finished
-        return if job.nil? && queue.exhausted?
+        if job.nil? && queue.exhausted?
+          queue.try_mark_finished
+          return
+        end
 
-        next if job.nil?
+        if job.nil?
+          # backoff if no job is available
+          sleep 1
+          next
+        end
 
         puts
         puts "Executing #{job}"
@@ -161,11 +180,13 @@ module RSpecQ
         RSpec.configuration.add_formatter(Formatters::ExampleCountRecorder.new(queue))
         RSpec.configuration.add_formatter(Formatters::WorkerHeartbeatRecorder.new(self))
 
-        if populate_timings
-          RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
-        end
+        # Recording is always-on: every build records per-job timings into the
+        # build-scoped key. The reporter promotes them to the global key only
+        # when --update-timings is set.
+        RSpec.configuration.add_formatter(Formatters::JobTimingRecorder.new(queue, job))
 
         args = [*rspec_args, "--format", "progress", *job.split("+")]
+        tags.each { |tag| args.push("--tag", tag) }
         opts = RSpec::Core::ConfigurationOptions.new(args)
 
         _result = RSpec::Core::Runner.new(opts).run($stderr, $stdout)
@@ -183,8 +204,15 @@ module RSpecQ
       end
     end
 
+    # Memoized global timings — read once and reused across the scheduling path.
+    def global_timings
+      @global_timings ||= queue.global_timings
+    end
+
     def try_publish_queue!(queue)
       return if !queue.become_master
+
+      queue.mark_elected_master_at
 
       if reproduction
         q_size = queue.publish(files_or_dirs_to_run, fail_fast)
@@ -192,20 +220,21 @@ module RSpecQ
           "Reproduction mode. Published queue as given (size=#{q_size})",
           "info"
         )
-        return
+        return q_size
       end
+
+      puts "I am the master worker (worker_id=#{@worker_id}), publishing the queue..."
 
       RSpec.configuration.files_or_directories_to_run = files_or_dirs_to_run
       files_to_run = RSpec.configuration.files_to_run.map { |j| relative_path(j) }
 
-      timings = queue.timings
-      if timings.empty?
+      if global_timings.empty?
         q_size = queue.publish(files_to_run.shuffle, fail_fast)
         log_event(
           "No timings found! Published queue in random order (size=#{q_size})",
           "warning"
         )
-        return
+        return q_size
       end
 
       # prepare jobs to run
@@ -213,7 +242,7 @@ module RSpecQ
       slow_files = []
 
       if file_split_threshold
-        slow_files = timings.take_while do |_job, duration|
+        slow_files = global_timings.take_while do |_job, duration|
           duration >= file_split_threshold
         end.map(&:first) & files_to_run
       end
@@ -221,36 +250,37 @@ module RSpecQ
       if slow_files.any?
         jobs.concat(files_to_run - slow_files)
         example_ids = files_to_example_ids(slow_files)
-        chunks = build_time_balanced_chunks(example_ids, timings, chunk_target_duration)
+        chunks = build_time_balanced_chunks(example_ids, global_timings, chunk_target_duration)
         jobs.concat(chunks)
       else
         jobs.concat(files_to_run)
       end
 
-      default_timing = timings.values[timings.values.size / 2]
+      jobs = order_jobs_by_timings(jobs)
 
-      # assign timings (based on previous runs) to all jobs
-      jobs = jobs.each_with_object({}) do |j, h|
-        if j.include?("+")
-          # Chunk job: sum per-example timings (or estimate from default)
-          parts = j.split("+")
-          h[j] = parts.sum { |p| timings[p] || default_timing }
-        else
-          puts "Untimed job: #{j}" if timings[j].nil?
-
-          # HEURISTIC: put jobs without previous timings (e.g. a newly added
-          # spec file) in the middle of the queue
-          h[j] = timings[j] || default_timing
-        end
-      end
-
-      # sort jobs based on their timings (slowest to be processed first)
-      jobs = jobs.sort_by { |_j, t| -t }.map(&:first)
-
-      puts "Published queue (size=#{queue.publish(jobs, fail_fast)})"
+      queue.publish(jobs, fail_fast)
     end
 
     private
+
+    # Assign each job its previous timing (chunk jobs sum their examples;
+    # untimed jobs get the median so they land mid-queue), then order slowest
+    # first so the longest jobs start earliest.
+    def order_jobs_by_timings(jobs)
+      default_timing = global_timings.values[global_timings.values.size / 2]
+
+      jobs = jobs.each_with_object({}) do |j, h|
+        if j.include?("+")
+          parts = j.split("+")
+          h[j] = parts.sum { |p| global_timings[p] || default_timing }
+        else
+          puts "Untimed job: #{j}" if global_timings[j].nil?
+          h[j] = global_timings[j] || default_timing
+        end
+      end
+
+      jobs.sort_by { |_j, t| -t }.map(&:first)
+    end
 
     # Groups example IDs into time-balanced chunks, one chunk per Kernel.load.
     # Examples from different files are never mixed. Uses per-example timings
@@ -377,7 +407,6 @@ module RSpecQ
         worker: @worker_id,
         queue: queue.inspect,
         files_or_dirs_to_run: files_or_dirs_to_run,
-        populate_timings: populate_timings,
         file_split_threshold: file_split_threshold,
         heartbeat_updated_at: @heartbeat_updated_at,
         object: inspect,

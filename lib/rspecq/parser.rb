@@ -118,6 +118,11 @@ module RSpecQ
           opts[:timings] = v
         end
 
+        o.on("--timings-key KEY", "Promote timings to KEY instead of the default " \
+                                  "global timings key (requires --update-timings).") do |v|
+          opts[:timings_key] = v
+        end
+
         o.on("--file-split-threshold N", Integer, "Split spec files slower than N " \
                                                   "seconds and schedule them as individual examples.") do |v|
           opts[:file_split_threshold] = v
@@ -167,6 +172,12 @@ module RSpecQ
           opts[:reproduction] = v
         end
 
+        o.on("--tag TAG", "Run examples with the specified tag, or exclude examples " \
+                          "by prefixing the tag with ~ (e.g. ~slow). Repeatable. " \
+                          "TAG is passed through to rspec.") do |tag|
+          (opts[:tags] ||= []) << tag
+        end
+
         o.on("--junit-output filepath", String, "Output junit formatted xml " \
                                                 "for CI suites to the defined file path. Substitution parameters " \
                                                 "{{TEST_ENV_NUMBER}} - parallel gem proc number. " \
@@ -205,6 +216,7 @@ module RSpecQ
       opts[:seed] ||= ENV["RSPECQ_SEED"]
       opts[:redis_host] ||= ENV["RSPECQ_REDIS"] || DEFAULT_REDIS_HOST
       opts[:timings] = opts.fetch(:timings, env_set?("RSPECQ_UPDATE_TIMINGS"))
+      opts[:timings_key] ||= ENV.fetch("RSPECQ_TIMINGS_KEY", nil)
       opts[:file_split_threshold] ||= Integer(ENV["RSPECQ_FILE_SPLIT_THRESHOLD"] || 9_999_999)
       opts[:report] = opts.fetch(:report, env_set?("RSPECQ_REPORT"))
       opts[:report_timeout] ||= Integer(ENV["RSPECQ_REPORT_TIMEOUT"] || DEFAULT_REPORT_TIMEOUT)
@@ -217,6 +229,7 @@ module RSpecQ
       opts[:redis_reconnect_attempts] ||= ENV["RSPECQ_REDIS_RECONNECT_ATTEMPTS"] || DEFAULT_REDIS_RECONNECT_ATTEMPTS
       opts[:fail_fast] ||= Integer(ENV["RSPECQ_FAIL_FAST"] || DEFAULT_FAIL_FAST)
       opts[:reproduction] ||= env_set?("RSPECQ_REPRODUCTION")
+      opts[:tags] ||= []
       opts[:junit_output] ||= ENV["RSPECQ_JUNIT_OUTPUT"]
       opts[:include_pattern] ||= ENV["INCLUDE_PATTERN"]
       opts[:exclude_pattern] ||= ENV["EXCLUDE_PATTERN"]

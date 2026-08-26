@@ -20,7 +20,9 @@ if config.report?
     timeout: config.report_timeout,
     redis_opts: config.redis_opts,
     queue_wait_timeout: config.queue_wait_timeout,
-    worker_liveness_sec: config.worker_liveness_sec
+    worker_liveness_sec: config.worker_liveness_sec,
+    update_timings: config.timings,
+    timings_key: config.timings_key
   )
 
   reporter.report
@@ -34,14 +36,14 @@ else
 
   worker.files_or_dirs_to_run = config.files_or_dirs_to_run if config.files_or_dirs_to_run
   worker.rspec_args = config.rspec_args
-  worker.populate_timings = config.timings
   worker.file_split_threshold = config.file_split_threshold
   worker.chunk_target_duration = config.chunk_target_duration
   worker.max_requeues = config.max_requeues
   worker.queue_wait_timeout = config.queue_wait_timeout
   worker.fail_fast = config.fail_fast
   worker.junit_output = config.junit_output
-  worker.seed = config.seed if config.seed
+  worker.seed = Integer(config.seed, 10) if config.seed
   worker.reproduction = config.reproduction
+  worker.tags = config.tags
   worker.work
 end

@@ -3,13 +3,12 @@ require "test_helpers"
 class TestScheduling < RSpecQTest
   def test_scheduling_with_timings_simple
     worker = new_worker("timings")
-    worker.populate_timings = true
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
 
     worker = new_worker("timings")
-    # worker.populate_timings is false by default
     queue = worker.queue
     silent { worker.try_publish_queue!(queue) }
 
@@ -24,18 +23,18 @@ class TestScheduling < RSpecQTest
 
   def test_scheduling_with_timings_and_splitting
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
 
     # 1st run with timings, the slow file will be split
     # chunk_target_duration=0 keeps each example as its own job (no chunking)
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     worker.file_split_threshold = 0.2
     worker.chunk_target_duration = 0
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
 
@@ -47,7 +46,6 @@ class TestScheduling < RSpecQTest
 
     # 2nd run with timings; individual example jobs will also have timings now
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     worker.file_split_threshold = 0.2
     worker.chunk_target_duration = 0  # 0 disables chunking (each example is its own job)
     silent { worker.try_publish_queue!(worker.queue) }
@@ -62,17 +60,17 @@ class TestScheduling < RSpecQTest
   def test_time_balanced_chunks
     # 1st run: no splitting, records file-level timing for foo_spec.rb (~0.3s)
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
 
     # 2nd run: split + chunk; target=1s groups both examples into one chunk
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     worker.file_split_threshold = 0.2
     worker.chunk_target_duration = 1
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
 
@@ -89,7 +87,6 @@ class TestScheduling < RSpecQTest
 
     # 3rd run: per-example timings now in Redis; verify ordering within chunk
     worker = new_worker("scheduling")
-    worker.populate_timings = true
     worker.file_split_threshold = 0.2
     worker.chunk_target_duration = 1
     silent { worker.try_publish_queue!(worker.queue) }
@@ -104,12 +101,12 @@ class TestScheduling < RSpecQTest
 
   def test_untimed_jobs_scheduled_in_the_middle
     worker = new_worker("scheduling_untimed/spec/foo")
-    worker.populate_timings = true
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
     assert worker.queue.build_successful?
-    refute_empty worker.queue.timings
+    refute_empty worker.queue.global_timings
 
     worker = new_worker("scheduling_untimed")
     silent { worker.try_publish_queue!(worker.queue) }
@@ -124,12 +121,12 @@ class TestScheduling < RSpecQTest
 
   def test_splitting_with_deprecation_warning
     worker = new_worker("deprecation_warning")
-    worker.populate_timings = true
     silent { worker.work }
+    worker.queue.update_global_timings
 
     assert_queue_well_formed(worker.queue)
     assert worker.queue.build_successful?
-    refute_empty worker.queue.timings
+    refute_empty worker.queue.global_timings
 
     worker = new_worker("deprecation_warning")
     worker.file_split_threshold = 0.2
