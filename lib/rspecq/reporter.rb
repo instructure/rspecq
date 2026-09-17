@@ -94,7 +94,7 @@ module RSpecQ
     def summary(failures, errors, flaky_jobs)
       failed_examples_section = "\nFailed examples:\n\n"
 
-      failures.each do |_job, msg|
+      failures.each_value do |msg|
         parts = msg.split("\n")
         failed_examples_section << "  #{parts[-1]}\n"
       end
@@ -109,16 +109,16 @@ module RSpecQ
 
       summary << failed_examples_section if !failures.empty?
 
-      errors.each { |_job, msg| summary << msg }
+      errors.each_value { |msg| summary << msg }
 
       requeues = @queue.requeued_jobs.values.sum
 
       summary << "\n"
       summary << "Total results:\n"
-      summary << "  #{@queue.example_count} examples "     \
+      summary << "  #{@queue.example_count} examples " \
                  "(#{@queue.processed_jobs_count} jobs), " \
-                 "#{failures.count} failures, "            \
-                 "#{errors.count} errors, "                \
+                 "#{failures.count} failures, " \
+                 "#{errors.count} errors, " \
                  "#{requeues} requeues"
       summary << ", #{flaky_jobs.count} flaky" if flaky_jobs.any?
       summary << ", #{@queue.lost_jobs_count} lost jobs (unique)" if @queue.lost_jobs_count.positive?
@@ -167,7 +167,7 @@ module RSpecQ
       return if jobs.empty?
 
       jobs.each do |job|
-        filename = job.gsub(/\[.+\]|\.\//, "").split(":")[0]
+        filename = job.gsub(%r{\[.+\]|\./}, "").split(":")[0]
 
         extra = {
           build: @build_id,

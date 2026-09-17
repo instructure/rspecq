@@ -257,6 +257,7 @@ module RSpecQ
     # requeued and should be considered a failure.
     def requeue_job(example, max_requeues, original_worker_id)
       return false if max_requeues.zero?
+
       job = example.id
       location = example.location_rerun_argument
 

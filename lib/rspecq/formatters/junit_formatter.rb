@@ -11,7 +11,7 @@ module RSpecQ
         @max_requeues = max_requeues
         @requeued_passed_examples = []
         @requeued_failed_examples = []
-        path = path.gsub(/{{TEST_ENV_NUMBER}}/,ENV["TEST_ENV_NUMBER"].to_s)
+        path = path.gsub(/{{TEST_ENV_NUMBER}}/, ENV["TEST_ENV_NUMBER"].to_s)
         path = path.gsub(/{{JOB_INDEX}}/, job_index.to_s)
         RSpec::Support::DirectoryMaker.mkdir_p(File.dirname(path))
         output_file = File.new(path, "w")

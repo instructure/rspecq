@@ -102,7 +102,8 @@ module RSpecQ
       RSpec::Core::Formatters.register(Formatters::ExampleCountRecorder, :dump_summary)
       RSpec::Core::Formatters.register(Formatters::FailureRecorder, :example_failed, :message)
       RSpec::Core::Formatters.register(Formatters::WorkerHeartbeatRecorder, :example_finished)
-      RSpec::Core::Formatters.register(Formatters::JUnitFormatter, :example_passed, :example_failed, :start, :stop, :dump_summary)
+      RSpec::Core::Formatters.register(Formatters::JUnitFormatter, :example_passed, :example_failed,
+                                       :start, :stop, :dump_summary)
     end
 
     def work
@@ -353,7 +354,7 @@ module RSpecQ
       # are loaded once via `require` and won't be re-defined.
       RSpec.world.shared_example_group_registry
            .send(:shared_example_groups)
-           .reject! { |k, _| k != :main }
+           .select! { |k, _| k == :main }
     end
 
     # NOTE: RSpec has to load the files before we can split them as individual

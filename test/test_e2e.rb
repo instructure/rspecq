@@ -141,13 +141,13 @@ class TestEndToEnd < RSpecQTest
 
     processed = queue.processed_jobs
     assert_equal 2, processed.size, "Expected 2 jobs: 1 chunk + fast_spec.rb"
-    assert processed.any? { |j| j == "./spec/fast_spec.rb" }
+    assert(processed.any? { |j| j == "./spec/fast_spec.rb" })
 
     chunk_job = processed.find { |j| j.include?("+") }
     refute_nil chunk_job, "Expected a chunk job with '+' delimiter"
     parts = chunk_job.split("+")
     assert_equal 2, parts.size
-    assert parts.all? { |p| p.start_with?("./spec/slow_spec.rb[") }
+    assert(parts.all? { |p| p.start_with?("./spec/slow_spec.rb[") })
   end
 
   def test_suite_with_failures_and_fail_fast
