@@ -1,0 +1,76 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+        with:
+          ruby-version: "3.4"
+      - run: bundle install
+      - run: bundle exec rubocop
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    name: "ruby ${{ matrix.ruby }} / redis-rb ${{ matrix.redis-gem }} / redis ${{ matrix.redis-server }} / rspec-core ${{ matrix.rspec-core }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each leg varies exactly one value from the first (canvas's combination),
+        # so a red leg names its own cause. Not a cross product.
+        include:
+          - { ruby: "3.4", redis-gem: "6.0.0", redis-server: "7", rspec-core: "3.13.6" }
+          - { ruby: "3.2", redis-gem: "6.0.0", redis-server: "7", rspec-core: "3.13.6" }
+          - { ruby: "3.4", redis-gem: "5.4.1", redis-server: "7", rspec-core: "3.13.6" }
+          - { ruby: "3.4", redis-gem: "6.0.0", redis-server: "6", rspec-core: "3.13.6" }
+          - { ruby: "3.4", redis-gem: "6.0.0", redis-server: "7", rspec-core: "3.12.3" }
+    services:
+      redis:
+        image: redis:${{ matrix.redis-server }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Job-level, not step-level: the gemspec reads these when CI is set, so
+      # they have to hold for `bundle install` and `bundle exec rake` alike or
+      # the run-time gems differ from the resolved ones.
+      RSPEC_CORE: ${{ matrix.rspec-core }}
+      REDIS_GEM: ${{ matrix.redis-gem }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+        with:
+          ruby-version: ${{ matrix.ruby }}
+      - run: bundle install
+      - run: bundle exec rake
+
+  # Single stable name to wire into branch protection; the matrix leg names
+  # embed version strings and would need rewiring every time the matrix moves.
+  build-complete:
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [ "${{ needs.lint.result }}" = "success" ] \
+            && [ "${{ needs.test.result }}" = "success" ]
