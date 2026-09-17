@@ -92,7 +92,7 @@ class TestConfiguration < Minitest::Test
 
   # Sets the given ENV vars for the block, restoring prior values afterwards.
   def with_env(vars)
-    original = vars.keys.to_h { |k| [k, ENV[k]] }
+    original = vars.keys.to_h { |k| [k, ENV.fetch(k, nil)] }
     vars.each { |k, v| ENV[k] = v }
     yield
   ensure

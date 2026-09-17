@@ -1,5 +1,10 @@
 AllCops:
   NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    # Fixture suites, deliberately written badly (global vars, flaky examples,
+    # deprecation warnings) for the tests to exercise.
+    - test/sample_suites/**/*
 
 Metrics:
   Enabled: false
@@ -9,11 +14,6 @@ Style/WordArray:
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
-
-Style/GlobalVars:
-  Exclude:
-    - test/sample_suites/flakey_suite/**/*.rb
-    - test/sample_suites/flaky_job_detection/**/*.rb
 
 Style/SpecialGlobalVars:
   Enabled: false
@@ -45,5 +45,17 @@ Layout/ArgumentAlignment:
 Gemspec/RequiredRubyVersion:
   Enabled: false
 
+# Dev deps stay in the gemspec: the CI matrix pins rspec-core/redis there via
+# env vars, and Gemfile.lock is gitignored.
+Gemspec/DevelopmentDependencies:
+  Enabled: false
+
 Naming/MethodParameterName:
+  Enabled: false
+
+# Would rename the public Queue#is_requeue.
+Naming/PredicatePrefix:
+  Enabled: false
+
+Style/Documentation:
   Enabled: false

@@ -12,7 +12,7 @@ puts "[rspecq] redis connection: " \
      "write_timeout=#{redis_conn[:write_timeout]} " \
      "reconnect_attempts=#{redis_conn[:reconnect_attempts].inspect}"
 
-Sentry.init if ENV['SENTRY_DSN']
+Sentry.init if ENV["SENTRY_DSN"]
 
 if config.report?
   reporter = RSpecQ::Reporter.new(

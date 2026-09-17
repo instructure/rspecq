@@ -28,13 +28,14 @@ Gem::Specification.new do |s|
   else
     s.add_dependency "redis", ">= 5.0", "< 7.0"
   end
-  s.add_dependency "sentry-ruby"
-  s.add_dependency "rspec_junit_formatter"
   s.add_dependency "logger" # sentry-ruby dependency in ruby 3.5 (should be fixed upstream)
+  s.add_dependency "rspec_junit_formatter"
+  s.add_dependency "sentry-ruby"
 
   s.add_development_dependency "minitest"
   s.add_development_dependency "pry-byebug"
   s.add_development_dependency "rake"
   s.add_development_dependency "rspec"
-  s.add_development_dependency "rubocop", "~> 0.93.0"
+  s.add_development_dependency "rubocop", "~> 1.91"
+  s.metadata["rubygems_mfa_required"] = "true"
 end

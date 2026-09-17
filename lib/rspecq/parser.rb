@@ -34,10 +34,10 @@ module RSpecQ
       parse_args!
       parse_env
 
-      # rubocop:disable Style/RaiseArgs, Layout/EmptyLineAfterGuardClause
+      # rubocop:disable Style/RaiseArgs
       raise OptionParser::MissingArgument.new(:build) if opts[:build].nil?
       raise OptionParser::MissingArgument.new(:worker) if !opts[:report] && opts[:worker].nil?
-      # rubocop:enable Style/RaiseArgs, Layout/EmptyLineAfterGuardClause
+      # rubocop:enable Style/RaiseArgs
 
       opts
     end
@@ -90,8 +90,8 @@ module RSpecQ
           opts[:redis_url] = v
         end
 
-        o.on("--redis-connect-timeout N", Float, "Seconds to wait when establishing " \
-                                                 "a Redis connection (default: #{DEFAULT_REDIS_CONNECT_TIMEOUT}).") do |v|
+        o.on("--redis-connect-timeout N", Float, "Seconds to wait when establishing a Redis " \
+                                                 "connection (default: #{DEFAULT_REDIS_CONNECT_TIMEOUT}).") do |v|
           opts[:redis_connect_timeout] = v
         end
 
@@ -211,9 +211,9 @@ module RSpecQ
     end
 
     def parse_env
-      opts[:build] ||= ENV["RSPECQ_BUILD"]
-      opts[:worker] ||= ENV["RSPECQ_WORKER"]
-      opts[:seed] ||= ENV["RSPECQ_SEED"]
+      opts[:build] ||= ENV.fetch("RSPECQ_BUILD", nil)
+      opts[:worker] ||= ENV.fetch("RSPECQ_WORKER", nil)
+      opts[:seed] ||= ENV.fetch("RSPECQ_SEED", nil)
       opts[:redis_host] ||= ENV["RSPECQ_REDIS"] || DEFAULT_REDIS_HOST
       opts[:timings] = opts.fetch(:timings, env_set?("RSPECQ_UPDATE_TIMINGS"))
       opts[:timings_key] ||= ENV.fetch("RSPECQ_TIMINGS_KEY", nil)
@@ -222,7 +222,7 @@ module RSpecQ
       opts[:report_timeout] ||= Integer(ENV["RSPECQ_REPORT_TIMEOUT"] || DEFAULT_REPORT_TIMEOUT)
       opts[:max_requeues] ||= Integer(ENV["RSPECQ_MAX_REQUEUES"] || DEFAULT_MAX_REQUEUES)
       opts[:queue_wait_timeout] ||= Integer(ENV["RSPECQ_QUEUE_WAIT_TIMEOUT"] || DEFAULT_QUEUE_WAIT_TIMEOUT)
-      opts[:redis_url] ||= ENV["RSPECQ_REDIS_URL"]
+      opts[:redis_url] ||= ENV.fetch("RSPECQ_REDIS_URL", nil)
       opts[:redis_connect_timeout] ||= env_float("RSPECQ_REDIS_CONNECT_TIMEOUT", DEFAULT_REDIS_CONNECT_TIMEOUT)
       opts[:redis_read_timeout] ||= env_float("RSPECQ_REDIS_READ_TIMEOUT", DEFAULT_REDIS_READ_TIMEOUT)
       opts[:redis_write_timeout] ||= env_float("RSPECQ_REDIS_WRITE_TIMEOUT", DEFAULT_REDIS_WRITE_TIMEOUT)
@@ -230,22 +230,22 @@ module RSpecQ
       opts[:fail_fast] ||= Integer(ENV["RSPECQ_FAIL_FAST"] || DEFAULT_FAIL_FAST)
       opts[:reproduction] ||= env_set?("RSPECQ_REPRODUCTION")
       opts[:tags] ||= []
-      opts[:junit_output] ||= ENV["RSPECQ_JUNIT_OUTPUT"]
-      opts[:include_pattern] ||= ENV["INCLUDE_PATTERN"]
-      opts[:exclude_pattern] ||= ENV["EXCLUDE_PATTERN"]
+      opts[:junit_output] ||= ENV.fetch("RSPECQ_JUNIT_OUTPUT", nil)
+      opts[:include_pattern] ||= ENV.fetch("INCLUDE_PATTERN", nil)
+      opts[:exclude_pattern] ||= ENV.fetch("EXCLUDE_PATTERN", nil)
       opts[:worker_liveness_sec] ||= Integer(ENV["RSPECQ_WORKER_LIVENESS_SEC"] || DEFAULT_WORKER_LIVENESS_SEC)
       opts[:chunk_target_duration] ||= Integer(ENV["RSPECQ_CHUNK_TARGET_DURATION"] || 30)
     end
 
     def env_set?(var)
-      ["1", "true"].include?(ENV[var])
+      ["1", "true"].include?(ENV.fetch(var, nil))
     end
 
     # A Float from `var`, treating a blank value (unset or empty/whitespace) as
     # absent and falling back to `default`. Jenkins string parameters commonly
     # default to "", which would otherwise crash Float("").
     def env_float(var, default)
-      value = ENV[var]
+      value = ENV.fetch(var, nil)
       value.nil? || value.strip.empty? ? default : Float(value)
     end
   end

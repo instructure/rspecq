@@ -47,7 +47,7 @@ class TestScheduling < RSpecQTest
     # 2nd run with timings; individual example jobs will also have timings now
     worker = new_worker("scheduling")
     worker.file_split_threshold = 0.2
-    worker.chunk_target_duration = 0  # 0 disables chunking (each example is its own job)
+    worker.chunk_target_duration = 0 # 0 disables chunking (each example is its own job)
     silent { worker.try_publish_queue!(worker.queue) }
 
     assert_equal [
@@ -78,12 +78,12 @@ class TestScheduling < RSpecQTest
     processed = worker.queue.processed_jobs
     assert_equal 2, processed.size, "Expected 2 jobs: 1 chunk + bar_spec.rb"
     assert processed.any? { |j| j.include?("+") }, "Expected at least one chunk job"
-    assert processed.any? { |j| j == "./test/sample_suites/scheduling/spec/bar_spec.rb" }
+    assert(processed.any? { |j| j == "./test/sample_suites/scheduling/spec/bar_spec.rb" })
 
     chunk_job = processed.find { |j| j.include?("+") }
     parts = chunk_job.split("+")
     assert_equal 2, parts.size, "Chunk should contain both examples from foo_spec.rb"
-    assert parts.all? { |p| p.start_with?("./test/sample_suites/scheduling/spec/foo_spec.rb[") }
+    assert(parts.all? { |p| p.start_with?("./test/sample_suites/scheduling/spec/foo_spec.rb[") })
 
     # 3rd run: per-example timings now in Redis; verify ordering within chunk
     worker = new_worker("scheduling")
@@ -130,7 +130,7 @@ class TestScheduling < RSpecQTest
 
     worker = new_worker("deprecation_warning")
     worker.file_split_threshold = 0.2
-    worker.chunk_target_duration = 0  # 0 disables chunking (each example is its own job)
+    worker.chunk_target_duration = 0 # 0 disables chunking (each example is its own job)
     silent { worker.work }
 
     assert_queue_well_formed(worker.queue)
