@@ -2,9 +2,8 @@ require "test_helpers"
 
 class TestConcurrentWorkers < RSpecQTest
   # The 'passing_concurrent' suite contains 5 spec files each containing a
-  # single example taking 2". We spawn that many workers so we expect roughly
-  # 2 second total execution time. We some more  to account for fork and
-  # rspec boot and other setup overheads
+  # single example taking 2". We spawn that many workers, so the work should
+  # overlap rather than run back to back.
   def test_passing_suite
     build_id = rand_id
     pids = []
@@ -20,9 +19,13 @@ class TestConcurrentWorkers < RSpecQTest
 
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
 
-    assert_operator elapsed, :<, 5
-
     queue = RSpecQ::Queue.new(build_id, "foo", REDIS_OPTS, 60)
+
+    # Parallelism, not runner speed: wall clock has to beat the summed job
+    # time, since a serialized run takes at least as long as the sum. A fixed
+    # threshold flakes instead on a loaded CI box, where booting five rubies
+    # eats the margin even though the work did overlap.
+    assert_operator elapsed, :<, queue.total_execution_time_ms / 1000.0
 
     assert_queue_well_formed(queue)
     assert queue.build_successful?
