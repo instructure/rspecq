@@ -23,6 +23,8 @@ jobs:
         with:
           ruby-version: "3.4"
       - run: bundle install
+      - name: Gemfile.lock is up to date
+        run: git diff --exit-code Gemfile.lock
       - run: bundle exec rubocop
 
   test:
@@ -32,8 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each leg varies exactly one value from the first (canvas's combination),
-        # so a red leg names its own cause. Not a cross product.
+        # Each leg varies one value from the first, so a red leg names its cause.
         include:
           - { ruby: "3.4", redis-gem: "6.0.0", redis-server: "7", rspec-core: "3.13.6" }
           - { ruby: "3.2", redis-gem: "6.0.0", redis-server: "7", rspec-core: "3.13.6" }
@@ -51,9 +52,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Job-level, not step-level: the gemspec reads these when CI is set, so
-      # they have to hold for `bundle install` and `bundle exec rake` alike or
-      # the run-time gems differ from the resolved ones.
+      # Job-level, not step-level: must hold for install and run alike, or the
+      # resolved gems differ from the loaded ones.
       RSPEC_CORE: ${{ matrix.rspec-core }}
       REDIS_GEM: ${{ matrix.redis-gem }}
     steps:
@@ -61,11 +61,16 @@ jobs:
       - uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
         with:
           ruby-version: ${{ matrix.ruby }}
+
+      # Legs resolve their own deps via the gemspec env hooks; keeping the lock
+      # only means bundler rewrites it every run.
+      - run: rm -f Gemfile.lock
+
       - run: bundle install
       - run: bundle exec rake
 
-  # Single stable name to wire into branch protection; the matrix leg names
-  # embed version strings and would need rewiring every time the matrix moves.
+  # Stable name for branch protection; leg names embed versions and would
+  # need rewiring whenever the matrix moves.
   build-complete:
     if: always()
     needs: [lint, test]
